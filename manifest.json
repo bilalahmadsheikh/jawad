@@ -1,0 +1,33 @@
+{
+  "manifest_version": 2,
+  "name": "FoxAgent",
+  "version": "1.0.0",
+  "description": "Bring Your Own AI to Every Website — A Browser Operating System",
+  "sidebar_action": {
+    "default_title": "FoxAgent",
+    "default_panel": "sidebar.html",
+    "default_icon": "icons/fox.svg"
+  },
+  "permissions": [
+    "activeTab",
+    "storage",
+    "tabs",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icons/fox.svg",
+    "96": "icons/fox.svg"
+  },
+  "content_security_policy": "script-src 'self'; object-src 'self'"
+}
+
