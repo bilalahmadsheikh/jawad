@@ -2,35 +2,8 @@ import { useEffect, useRef } from 'react';
 import { useChatStore } from '../stores/chat-store';
 import { useHarborStore } from '../stores/harbor-store';
 import { useWorkflowStore } from '../stores/workflow-store';
+import { sendToBackground, addMessageHandler } from '../lib/port';
 import type { PermissionRequest, ActionLogEntry, WorkflowPlan } from '../../lib/types';
-
-// Module-level port management (singleton across hook instances)
-let port: browser.Port | null = null;
-const messageHandlers = new Set<(msg: Record<string, unknown>) => void>();
-
-function ensurePort(): browser.Port {
-  if (!port) {
-    port = browser.runtime.connect({ name: 'sidebar' });
-    port.onMessage.addListener((msg: unknown) => {
-      const message = msg as Record<string, unknown>;
-      messageHandlers.forEach((h) => h(message));
-    });
-    port.onDisconnect.addListener(() => {
-      port = null;
-    });
-  }
-  return port;
-}
-
-function sendToBackground(msg: Record<string, unknown>): void {
-  try {
-    ensurePort().postMessage(msg);
-  } catch {
-    // Port disconnected, try to reconnect
-    port = null;
-    ensurePort().postMessage(msg);
-  }
-}
 
 export interface LLMActions {
   sendChatMessage: (content: string) => void;
@@ -44,7 +17,7 @@ export interface LLMActions {
 
 /**
  * Hook that manages communication between the sidebar and background script.
- * Bridges messages to Zustand stores.
+ * Uses the shared port manager and bridges messages to Zustand stores.
  */
 export function useLLM(): LLMActions {
   const addMessage = useChatStore((s) => s.addMessage);
@@ -59,10 +32,7 @@ export function useLLM(): LLMActions {
     if (initialized.current) return;
     initialized.current = true;
 
-    // Ensure port connection
-    ensurePort();
-
-    const handler = (msg: Record<string, unknown>) => {
+    const unsubscribe = addMessageHandler((msg) => {
       switch (msg.type) {
         case 'CHAT_RESPONSE': {
           const payload = msg.payload as { content: string; isError?: boolean };
@@ -92,13 +62,9 @@ export function useLLM(): LLMActions {
           break;
         }
       }
-    };
+    });
 
-    messageHandlers.add(handler);
-
-    return () => {
-      messageHandlers.delete(handler);
-    };
+    return unsubscribe;
   }, [addMessage, setLoading, addPendingPermission, addActionLogEntry, setWorkflow]);
 
   const sendChatMessage = (content: string) => {
@@ -166,4 +132,3 @@ export function useLLM(): LLMActions {
     clearHistory,
   };
 }
-

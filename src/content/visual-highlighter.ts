@@ -8,15 +8,16 @@ const STYLE_ID = 'foxagent-highlight-styles';
 /**
  * Highlight an element with a pulsing orange border so the user
  * can see what FoxAgent is about to interact with.
+ * Accepts either a CSS selector string or an Element directly.
  */
-export function highlightElement(selector: string): void {
+export function highlightElement(target: string | Element): void {
   // Inject styles if not already present
   injectStyles();
 
   // Remove any existing highlights
   removeHighlights();
 
-  const el = document.querySelector(selector);
+  const el = typeof target === 'string' ? document.querySelector(target) : target;
   if (!el) return;
 
   // Scroll element into view
@@ -96,4 +97,3 @@ function injectStyles(): void {
   `;
   document.head.appendChild(style);
 }
-

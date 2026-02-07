@@ -1,31 +1,29 @@
 // ============================================================
-// MCP Tool Registry - Tool definitions and execution
+// Enhanced MCP Tool Registry
+// New tools: search_web, draft_email, get_snapshot
+// Better descriptions that guide LLM behavior
 // ============================================================
 
 import type { ToolDefinition } from './types';
+import { getCachedSnapshot, getLastProductContext } from './page-cache';
 
 export const TOOLS: ToolDefinition[] = [
   {
     name: 'read_page',
     description:
-      'Read the current page content. Returns the page title and main content as clean markdown. Use this to understand what is on the page before taking actions.',
+      'Read the current page. Returns page content (markdown), product info if on a product page, and a list of INTERACTIVE ELEMENTS with their exact CSS selectors. ALWAYS call this first before clicking or filling anything.',
     parameters: {},
     permission: 'read-only',
   },
   {
     name: 'click_element',
     description:
-      'Click an element on the current page. The element will be highlighted before clicking so the user can see what is being targeted.',
+      'Click an element on the current page. You can pass either an exact CSS selector from read_page results, OR the visible text of the element (e.g. "Add to Cart", "Sign In"). The element is highlighted before clicking.',
     parameters: {
       selector: {
         type: 'string',
-        description: 'CSS selector of the element to click',
-        required: true,
-      },
-      description: {
-        type: 'string',
         description:
-          'Human-readable description of what is being clicked (e.g. "Add to Cart button")',
+          'CSS selector from read_page results, OR the visible text of the element to click (e.g. "Add to Cart")',
         required: true,
       },
     },
@@ -34,11 +32,12 @@ export const TOOLS: ToolDefinition[] = [
   {
     name: 'fill_form',
     description:
-      'Type text into an input field or textarea on the current page.',
+      'Type text into an input field. You can pass an exact CSS selector from read_page, OR a purpose keyword ("search", "email", "password"). Set submit=true to press Enter/submit after filling.',
     parameters: {
       selector: {
         type: 'string',
-        description: 'CSS selector of the input field',
+        description:
+          'CSS selector from read_page results, OR purpose keyword: "search", "email", "password", "query"',
         required: true,
       },
       text: {
@@ -46,13 +45,18 @@ export const TOOLS: ToolDefinition[] = [
         description: 'Text to type into the field',
         required: true,
       },
+      submit: {
+        type: 'boolean',
+        description:
+          'If true, press Enter or click Submit after filling. Use this for search bars.',
+      },
     },
     permission: 'interact',
   },
   {
     name: 'navigate',
     description:
-      'Navigate to a URL. Can open in the current tab or a new tab.',
+      'Navigate to a URL. Opens in the current tab by default, or a new tab if newTab=true.',
     parameters: {
       url: {
         type: 'string',
@@ -61,18 +65,54 @@ export const TOOLS: ToolDefinition[] = [
       },
       newTab: {
         type: 'boolean',
-        description: 'If true, open in a new tab. Default is false.',
+        description: 'If true, open in a new tab.',
       },
     },
     permission: 'navigate',
   },
   {
+    name: 'search_web',
+    description:
+      'Search Google directly. Much more reliable than trying to fill a search bar. Returns the search results page content. Use this for finding products, prices, information, etc.',
+    parameters: {
+      query: {
+        type: 'string',
+        description:
+          'Search query (e.g. "Nike Air Max 270 price comparison", "best hoodies under $50")',
+        required: true,
+      },
+    },
+    permission: 'navigate',
+  },
+  {
+    name: 'draft_email',
+    description:
+      'Open a Gmail compose window with pre-filled To, Subject, and Body. The email is NOT sent — it opens as a draft for the user to review. Works with Gmail.',
+    parameters: {
+      to: {
+        type: 'string',
+        description: 'Recipient email address (leave empty if unknown)',
+      },
+      subject: {
+        type: 'string',
+        description: 'Email subject line',
+        required: true,
+      },
+      body: {
+        type: 'string',
+        description: 'Email body text. Can include line breaks with \\n.',
+        required: true,
+      },
+    },
+    permission: 'interact',
+  },
+  {
     name: 'scroll_page',
-    description: 'Scroll the current page up or down.',
+    description: 'Scroll the current page up or down to see more content.',
     parameters: {
       direction: {
         type: 'string',
-        description: 'Scroll direction',
+        description: 'Scroll direction: "up" or "down"',
         required: true,
         enum: ['up', 'down'],
       },
@@ -80,10 +120,16 @@ export const TOOLS: ToolDefinition[] = [
     permission: 'read-only',
   },
   {
-    name: 'summarize_page',
+    name: 'get_snapshot',
     description:
-      'Read the current page content and return it for summarization. Use read_page instead if you just want to see what is on the page.',
-    parameters: {},
+      'Retrieve cached context from a previously viewed page. Use this when the user says "like this" or "similar to what I was looking at". Returns saved product info, title, and content.',
+    parameters: {
+      url: {
+        type: 'string',
+        description:
+          'URL of the page to retrieve. Leave empty to get the most recent snapshot.',
+      },
+    },
     permission: 'read-only',
   },
 ];
@@ -118,14 +164,14 @@ export function toOpenAITools(tools: ToolDefinition[]): unknown[] {
 }
 
 /**
- * Execute a tool action by sending a message to the content script.
+ * Execute a tool action.
  */
 export async function executeToolAction(
   toolName: string,
   args: Record<string, unknown>,
   tabId?: number
 ): Promise<unknown> {
-  if (!tabId && toolName !== 'navigate') {
+  if (!tabId && !['navigate', 'search_web', 'draft_email', 'get_snapshot'].includes(toolName)) {
     return { error: 'No active tab available' };
   }
 
@@ -135,14 +181,6 @@ export async function executeToolAction(
         return await browser.tabs.sendMessage(tabId!, { type: 'READ_PAGE' });
 
       case 'click_element': {
-        // Highlight the element first
-        await browser.tabs.sendMessage(tabId!, {
-          type: 'HIGHLIGHT_ELEMENT',
-          payload: { selector: args.selector },
-        });
-        // Wait for highlight animation
-        await sleep(1500);
-        // Click the element
         return await browser.tabs.sendMessage(tabId!, {
           type: 'CLICK_ELEMENT',
           payload: { selector: args.selector },
@@ -150,14 +188,13 @@ export async function executeToolAction(
       }
 
       case 'fill_form': {
-        await browser.tabs.sendMessage(tabId!, {
-          type: 'HIGHLIGHT_ELEMENT',
-          payload: { selector: args.selector },
-        });
-        await sleep(1000);
         return await browser.tabs.sendMessage(tabId!, {
           type: 'FILL_FORM',
-          payload: { selector: args.selector, text: args.text },
+          payload: {
+            selector: args.selector,
+            text: args.text,
+            submit: args.submit || false,
+          },
         });
       }
 
@@ -167,15 +204,85 @@ export async function executeToolAction(
             url: args.url as string,
             active: true,
           });
-          // Wait for page load
           await waitForTabLoad(tab.id!);
-          return { success: true, tabId: tab.id, url: args.url };
+          return {
+            success: true,
+            tabId: tab.id,
+            url: args.url,
+            message: `Opened ${args.url} in a new tab.`,
+          };
         } else if (tabId) {
           await browser.tabs.update(tabId, { url: args.url as string });
           await waitForTabLoad(tabId);
-          return { success: true, url: args.url };
+          return {
+            success: true,
+            url: args.url,
+            message: `Navigated to ${args.url}.`,
+          };
         }
         return { error: 'No tab to navigate' };
+      }
+
+      case 'search_web': {
+        const query = args.query as string;
+        const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+
+        // Use current tab if available, else open new tab
+        if (tabId) {
+          await browser.tabs.update(tabId, { url });
+          await waitForTabLoad(tabId);
+          // Read the results page
+          try {
+            const results = await browser.tabs.sendMessage(tabId, {
+              type: 'READ_PAGE',
+            });
+            return {
+              success: true,
+              searchQuery: query,
+              url,
+              pageContent: results,
+            };
+          } catch {
+            return {
+              success: true,
+              searchQuery: query,
+              url,
+              message:
+                'Navigated to search results. Call read_page to see the content.',
+            };
+          }
+        } else {
+          const tab = await browser.tabs.create({ url, active: true });
+          await waitForTabLoad(tab.id!);
+          return {
+            success: true,
+            searchQuery: query,
+            url,
+            tabId: tab.id,
+            message:
+              'Opened search results in new tab. Call read_page to see the content.',
+          };
+        }
+      }
+
+      case 'draft_email': {
+        const to = (args.to as string) || '';
+        const subject = (args.subject as string) || '';
+        const body = (args.body as string) || '';
+
+        // Gmail compose URL
+        const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+        const tab = await browser.tabs.create({
+          url: gmailUrl,
+          active: true,
+        });
+
+        return {
+          success: true,
+          tabId: tab.id,
+          message: `Email draft opened in Gmail.\n- To: ${to || '(empty)'}\n- Subject: ${subject}\n- Body: ${body.substring(0, 100)}${body.length > 100 ? '...' : ''}\n\nThe user must review and click Send.`,
+        };
       }
 
       case 'scroll_page':
@@ -184,8 +291,37 @@ export async function executeToolAction(
           payload: { direction: args.direction },
         });
 
-      case 'summarize_page':
-        return await browser.tabs.sendMessage(tabId!, { type: 'READ_PAGE' });
+      case 'get_snapshot': {
+        const url = args.url as string | undefined;
+        const snapshot = await getCachedSnapshot(url);
+
+        if (!snapshot) {
+          // Try product context
+          const product = await getLastProductContext();
+          if (product) {
+            return {
+              success: true,
+              source: 'product-cache',
+              product,
+              message: `Found cached product: ${product.name}${product.price ? ` at ${product.price}` : ''}`,
+            };
+          }
+          return {
+            success: false,
+            error: 'No cached page snapshots found. Browse to a page first.',
+          };
+        }
+
+        return {
+          success: true,
+          source: 'page-cache',
+          title: snapshot.title,
+          url: snapshot.url,
+          product: snapshot.product || null,
+          content: snapshot.markdown.substring(0, 3000),
+          cachedAt: new Date(snapshot.timestamp).toISOString(),
+        };
+      }
 
       default:
         return { error: `Unknown tool: ${toolName}` };
@@ -196,10 +332,6 @@ export async function executeToolAction(
   }
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function waitForTabLoad(tabId: number): Promise<void> {
   return new Promise((resolve) => {
     const listener = (
@@ -208,8 +340,7 @@ function waitForTabLoad(tabId: number): Promise<void> {
     ) => {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
         browser.tabs.onUpdated.removeListener(listener);
-        // Small extra delay for JS rendering
-        setTimeout(resolve, 500);
+        setTimeout(resolve, 800); // Extra time for JS rendering
       }
     };
     browser.tabs.onUpdated.addListener(listener);
@@ -221,3 +352,5 @@ function waitForTabLoad(tabId: number): Promise<void> {
   });
 }
 
+// Re-export for use by agent-manager
+export { waitForTabLoad };

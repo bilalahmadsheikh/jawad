@@ -1,5 +1,6 @@
 // ============================================================
-// Message Handler - Routes sidebar messages to appropriate handlers
+// Message Handler — Routes sidebar messages to appropriate handlers
+// Now includes page context caching and product context injection
 // ============================================================
 
 import { runAgentLoop } from './agent-manager';
@@ -7,6 +8,7 @@ import { planAndExecuteWorkflow, cancelCurrentWorkflow } from './orchestrator';
 import { chatCompletion } from '../lib/any-llm-router';
 import type { LLMConfig } from '../lib/types';
 import { DEFAULT_SYSTEM_PROMPT, generateId } from '../lib/constants';
+import { cachePageSnapshot, getLastProductContext } from '../lib/page-cache';
 
 // Conversation history for the agent loop
 let conversationHistory: Array<{
@@ -23,7 +25,7 @@ const pendingPermissions = new Map<
 >();
 
 /**
- * Main message router. Called by background/index.ts when the sidebar sends a message.
+ * Main message router.
  */
 export async function handleMessage(
   msg: Record<string, unknown>,
@@ -49,9 +51,7 @@ export async function handleMessage(
       break;
 
     case 'SAVE_SETTINGS':
-      await browser.storage.local.set({
-        foxagent_config: payload,
-      });
+      await browser.storage.local.set({ foxagent_config: payload });
       break;
 
     case 'GET_SETTINGS': {
@@ -87,25 +87,91 @@ async function handleChatMessage(
   try {
     const config = await getConfig();
 
-    // Get current page context
+    // Get current page context and cache it
     let pageContext = '';
+    let currentUrl = '';
     try {
       const tabs = await browser.tabs.query({
         active: true,
         currentWindow: true,
       });
       const currentTab = tabs[0];
+      currentUrl = currentTab?.url || '';
+
       if (currentTab?.id) {
         const pageContent = (await browser.tabs.sendMessage(currentTab.id, {
           type: 'READ_PAGE',
-        })) as { title?: string; markdown?: string } | null;
+        })) as {
+          title?: string;
+          markdown?: string;
+          product?: Record<string, unknown>;
+          interactiveElements?: string;
+        } | null;
 
-        if (pageContent?.markdown) {
-          pageContext = `\n\nCurrent tab: ${currentTab.url}\nPage title: ${pageContent.title || 'Unknown'}\nPage content (markdown):\n${pageContent.markdown.substring(0, 3000)}`;
+        if (pageContent) {
+          // Cache the page for future reference
+          await cachePageSnapshot({
+            url: currentUrl,
+            title: pageContent.title || 'Unknown',
+            markdown: pageContent.markdown || '',
+            product: pageContent.product as {
+              name: string;
+              price?: string;
+              currency?: string;
+              description?: string;
+              brand?: string;
+              image?: string;
+              rating?: string;
+            } | undefined,
+            interactiveElements: pageContent.interactiveElements,
+          });
+
+          // Build rich context
+          const parts = [
+            `\n\n--- CURRENT PAGE CONTEXT ---`,
+            `URL: ${currentUrl}`,
+            `Title: ${pageContent.title || 'Unknown'}`,
+          ];
+
+          if (pageContent.product) {
+            const p = pageContent.product;
+            parts.push(`\nPRODUCT DETECTED:`);
+            if (p.name) parts.push(`  Name: ${p.name}`);
+            if (p.price) parts.push(`  Price: ${p.price}${p.currency ? ' ' + p.currency : ''}`);
+            if (p.brand) parts.push(`  Brand: ${p.brand}`);
+            if (p.description) parts.push(`  Description: ${String(p.description).substring(0, 200)}`);
+          }
+
+          if (pageContent.markdown) {
+            parts.push(
+              `\nPAGE CONTENT:\n${pageContent.markdown.substring(0, 3000)}`
+            );
+          }
+
+          if (pageContent.interactiveElements) {
+            parts.push(
+              `\nINTERACTIVE ELEMENTS:\n${pageContent.interactiveElements}`
+            );
+          }
+
+          pageContext = parts.join('\n');
         }
       }
     } catch {
       // Content script not available on this page
+    }
+
+    // Check if user is referencing a previous page ("like this", "similar", etc.)
+    const refersToProduct =
+      /\b(this|like this|similar|same|current|cheaper|less|lower price|compare)\b/i.test(
+        content
+      );
+    if (refersToProduct && !pageContext.includes('PRODUCT DETECTED')) {
+      // Try to get cached product context
+      const lastProduct = await getLastProductContext();
+      if (lastProduct) {
+        pageContext += `\n\nPREVIOUS PRODUCT CONTEXT (from cache):\n  Name: ${lastProduct.name}${lastProduct.price ? `\n  Price: ${lastProduct.price}` : ''}${lastProduct.brand ? `\n  Brand: ${lastProduct.brand}` : ''}`;
+      }
     }
 
     const systemPrompt = DEFAULT_SYSTEM_PROMPT + pageContext;
@@ -165,17 +231,26 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
       return;
     }
 
-    let pageContent: { title?: string; markdown?: string; url?: string } | null = null;
+    type PageResult = {
+      title?: string;
+      markdown?: string;
+      url?: string;
+      product?: Record<string, unknown>;
+      interactiveElements?: string;
+    };
+
+    let pageContent: PageResult | null = null;
+
     try {
       pageContent = (await browser.tabs.sendMessage(currentTab.id, {
         type: 'READ_PAGE',
-      })) as { title?: string; markdown?: string; url?: string } | null;
+      })) as PageResult;
     } catch {
       port.postMessage({
         type: 'CHAT_RESPONSE',
         payload: {
           content:
-            'Could not read the page. The content script may not be loaded on this page (try refreshing or navigating to a regular webpage).',
+            'Could not read the page. Try refreshing or navigating to a regular webpage.',
           isError: true,
         },
       });
@@ -190,13 +265,30 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
       return;
     }
 
+    // Cache the page
+    await cachePageSnapshot({
+      url: currentTab.url || '',
+      title: pageContent.title || 'Unknown',
+      markdown: pageContent.markdown,
+      product: pageContent.product as {
+        name: string;
+        price?: string;
+        currency?: string;
+        description?: string;
+        brand?: string;
+        image?: string;
+        rating?: string;
+      } | undefined,
+    });
+
+    let summaryPrompt = `Summarize this page concisely. Use bullet points for key information. Be brief but thorough.`;
+    if (pageContent.product) {
+      summaryPrompt += `\n\nThis appears to be a product page. Include: product name, price, key features, and any notable details.`;
+    }
+
     const response = await chatCompletion(config, {
       messages: [
-        {
-          role: 'system',
-          content:
-            'You are FoxAgent. Summarize the following web page content concisely. Use bullet points for key information. Be brief but thorough.',
-        },
+        { role: 'system', content: `You are FoxAgent. ${summaryPrompt}` },
         {
           role: 'user',
           content: `Summarize this page:\n\nTitle: ${pageContent.title || 'Unknown'}\nURL: ${currentTab.url}\n\nContent:\n${pageContent.markdown.substring(0, 5000)}`,
@@ -204,9 +296,9 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
       ],
     });
 
-    const summary = response.choices[0]?.message?.content || 'No summary generated.';
+    const summary =
+      response.choices[0]?.message?.content || 'No summary generated.';
 
-    // Add to conversation history
     conversationHistory.push(
       { role: 'user', content: `Summarize this page: ${currentTab.url}` },
       { role: 'assistant', content: summary }
@@ -228,7 +320,6 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
 
 /**
  * Request permission from the user via the sidebar.
- * Returns a Promise that resolves when the user responds.
  */
 export function requestPermissionFromUser(
   toolName: string,
@@ -255,7 +346,7 @@ export function requestPermissionFromUser(
       },
     });
 
-    // Timeout after 60 seconds - default to deny
+    // Timeout after 60 seconds — default to deny
     setTimeout(() => {
       if (pendingPermissions.has(requestId)) {
         pendingPermissions.delete(requestId);
@@ -265,9 +356,6 @@ export function requestPermissionFromUser(
   });
 }
 
-/**
- * Handle user's response to a permission request.
- */
 function handlePermissionResponse(
   requestId: string,
   decision: string
@@ -279,9 +367,6 @@ function handlePermissionResponse(
   }
 }
 
-/**
- * Get LLM config from storage.
- */
 async function getConfig(): Promise<LLMConfig> {
   const data = await browser.storage.local.get('foxagent_config');
   const config = data.foxagent_config as LLMConfig | undefined;
@@ -292,4 +377,3 @@ async function getConfig(): Promise<LLMConfig> {
   }
   return config;
 }
-

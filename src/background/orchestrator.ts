@@ -1,10 +1,12 @@
 // ============================================================
 // Orchestrator - Research Mode multi-tab workflow execution
+// Enhanced: product context, page caching, richer step prompts
 // ============================================================
 
 import { chatCompletion } from '../lib/any-llm-router';
 import { runAgentLoop } from './agent-manager';
 import { requestPermissionFromUser } from './message-handler';
+import { cachePageSnapshot, getLastProductContext } from '../lib/page-cache';
 import type { LLMConfig, WorkflowPlan, WorkflowStep } from '../lib/types';
 import { generateId } from '../lib/constants';
 
@@ -21,7 +23,7 @@ export function cancelCurrentWorkflow(): void {
  * Plan and execute a Research Mode workflow.
  * 1. Use LLM to decompose the intent into steps
  * 2. Show the plan to the user for approval
- * 3. Execute each step sequentially
+ * 3. Execute each step sequentially with rich context
  */
 export async function planAndExecuteWorkflow(
   intent: string,
@@ -32,8 +34,17 @@ export async function planAndExecuteWorkflow(
   try {
     const config = await getConfig();
 
+    // Gather existing product context if user references "this" or "similar"
+    let productContext = '';
+    const lastProduct = await getLastProductContext();
+    if (lastProduct) {
+      productContext = `\nUser recently viewed a product: ${lastProduct.name}`;
+      if (lastProduct.price) productContext += ` (${lastProduct.price}${lastProduct.currency ? ' ' + lastProduct.currency : ''})`;
+      if (lastProduct.brand) productContext += ` by ${lastProduct.brand}`;
+    }
+
     // Step 1: Plan the workflow using LLM
-    const plan = await createWorkflowPlan(config, intent);
+    const plan = await createWorkflowPlan(config, intent, productContext);
 
     // Send plan to sidebar for display
     port.postMessage({
@@ -83,8 +94,14 @@ export async function planAndExecuteWorkflow(
         // Wait for page to load
         await waitForLoad(tab.id!);
 
-        // Read the page content
-        let pageContent: { markdown?: string; title?: string } | null = null;
+        // Read the page content with full context
+        let pageContent: {
+          markdown?: string;
+          title?: string;
+          product?: Record<string, unknown>;
+          interactiveElements?: string;
+        } | null = null;
+
         try {
           pageContent = (await browser.tabs.sendMessage(tab.id!, {
             type: 'READ_PAGE',
@@ -93,16 +110,68 @@ export async function planAndExecuteWorkflow(
           pageContent = { markdown: 'Could not read page content.', title: step.site };
         }
 
+        // Cache the page snapshot for future reference
+        if (pageContent) {
+          try {
+            await cachePageSnapshot({
+              url: step.site,
+              title: pageContent.title || step.site,
+              markdown: pageContent.markdown || '',
+              product: pageContent.product as {
+                name: string;
+                price?: string;
+                currency?: string;
+                description?: string;
+                brand?: string;
+                image?: string;
+                rating?: string;
+              } | undefined,
+              interactiveElements: pageContent.interactiveElements,
+            });
+          } catch {
+            // Caching failure is non-critical
+          }
+        }
+
         // Build context from previous steps
         const previousContext = Object.entries(results)
           .map(([key, val]) => `Previous result (${key}): ${JSON.stringify(val)}`)
           .join('\n');
 
-        // Run agent for this step
+        // Build rich page context
+        const pageContextParts: string[] = [
+          `Page: ${step.site}`,
+          `Title: ${pageContent?.title || 'Unknown'}`,
+        ];
+
+        if (pageContent?.product) {
+          const p = pageContent.product;
+          pageContextParts.push('\nPRODUCT DETECTED:');
+          if (p.name) pageContextParts.push(`  Name: ${p.name}`);
+          if (p.price) pageContextParts.push(`  Price: ${p.price}${p.currency ? ' ' + p.currency : ''}`);
+          if (p.brand) pageContextParts.push(`  Brand: ${p.brand}`);
+          if (p.description) pageContextParts.push(`  Description: ${String(p.description).substring(0, 300)}`);
+        }
+
+        if (pageContent?.markdown) {
+          pageContextParts.push(`\nPage content:\n${pageContent.markdown.substring(0, 4000)}`);
+        }
+
+        if (pageContent?.interactiveElements) {
+          pageContextParts.push(`\nInteractive elements:\n${pageContent.interactiveElements}`);
+        }
+
+        // Run agent for this step with enriched context
         const stepMessages = [
           {
             role: 'system',
-            content: `You are a research agent. Your current task: ${step.task}\nSite: ${step.site}\nPage content:\n${pageContent?.markdown?.substring(0, 3000) || 'No content'}\n\n${previousContext ? `Context from previous steps:\n${previousContext}` : ''}`,
+            content: `You are a research agent executing step ${i + 1} of a workflow.
+Your current task: ${step.task}
+${pageContextParts.join('\n')}
+${previousContext ? `\nContext from previous steps:\n${previousContext}` : ''}
+${productContext ? `\n${productContext}` : ''}
+
+IMPORTANT: Use the tools available to you. If you need to search for something, use search_web. If you need to click or fill a form, read_page first to get exact selectors. Summarize your findings clearly.`,
           },
           {
             role: 'user',
@@ -163,7 +232,8 @@ export async function planAndExecuteWorkflow(
  */
 async function createWorkflowPlan(
   config: LLMConfig,
-  intent: string
+  intent: string,
+  productContext: string
 ): Promise<WorkflowPlan> {
   const response = await chatCompletion(config, {
     messages: [
@@ -172,9 +242,9 @@ async function createWorkflowPlan(
         content: `You are a workflow planner. Given a user's intent, decompose it into a sequence of web research steps.
 
 Each step should have:
-- agent: The type of agent (SearchAgent, CalendarAgent, EmailAgent, CompareAgent)
-- task: What the agent should do
-- site: The URL to visit
+- agent: The type of agent (SearchAgent, CalendarAgent, EmailAgent, CompareAgent, ShoppingAgent)
+- task: What the agent should do (be specific)
+- site: The URL to visit (use real URLs)
 
 Respond with ONLY valid JSON in this format:
 {
@@ -184,7 +254,10 @@ Respond with ONLY valid JSON in this format:
   ]
 }
 
-Keep it to 3-5 steps. Use real, common websites.`,
+For product comparisons, include steps to search different retailers.
+For email tasks, the last step should use EmailAgent.
+Keep it to 3-5 steps. Use real, common websites.
+${productContext ? `\nProduct context: ${productContext}` : ''}`,
       },
       {
         role: 'user',
@@ -260,4 +333,3 @@ function waitForLoad(tabId: number): Promise<void> {
     }, 15000);
   });
 }
-
