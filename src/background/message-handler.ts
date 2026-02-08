@@ -128,7 +128,7 @@ async function handleChatMessage(
 
           // Build rich context
           const parts = [
-            `\n\n--- CURRENT PAGE CONTEXT ---`,
+            `\n\n--- CURRENT PAGE CONTEXT (already extracted — do NOT call read_page) ---`,
             `URL: ${currentUrl}`,
             `Title: ${pageContent.title || 'Unknown'}`,
           ];
@@ -172,6 +172,43 @@ async function handleChatMessage(
       if (lastProduct) {
         pageContext += `\n\nPREVIOUS PRODUCT CONTEXT (from cache):\n  Name: ${lastProduct.name}${lastProduct.price ? `\n  Price: ${lastProduct.price}` : ''}${lastProduct.brand ? `\n  Brand: ${lastProduct.brand}` : ''}`;
       }
+    }
+
+    // ── Fast path: page-summarize requests ──────────────────────
+    // Use a direct LLM call (no tools) so the model can't
+    // hallucinate tool calls like <summarize_page/>.
+    const trimmed = content.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+    const isPageSummarize =
+      /^(please\s+|can you\s+)?(summarize|summarise|sum\s+up|summary)(\s+(this|the|it|current))?(\s+(page|site|website|tab))?$/.test(
+        trimmed
+      );
+
+    if (isPageSummarize && pageContext) {
+      const summaryResponse = await chatCompletion(config, {
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are FoxAgent, a helpful browser assistant. Summarize the page content concisely using bullet points for key information. Be brief but thorough.',
+          },
+          { role: 'user', content: `Summarize this page:\n${pageContext}` },
+        ],
+      });
+
+      const summary =
+        summaryResponse.choices[0]?.message?.content ||
+        'Could not generate summary.';
+
+      conversationHistory.push(
+        { role: 'user', content },
+        { role: 'assistant', content: summary }
+      );
+
+      port.postMessage({
+        type: 'CHAT_RESPONSE',
+        payload: { content: summary },
+      });
+      return;
     }
 
     const systemPrompt = DEFAULT_SYSTEM_PROMPT + pageContext;

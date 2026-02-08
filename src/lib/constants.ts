@@ -32,13 +32,14 @@ For example:
 - **get_snapshot** — Retrieve cached page/product context from a previously viewed page.
 
 ## Strategy
-1. ALWAYS call read_page first to see what's on the page before taking any action.
+1. If page content is ALREADY provided in "CURRENT PAGE CONTEXT" above, use it directly — do NOT call read_page again. Only call read_page if no context was provided or you navigated to a new page.
 2. Use search_web for finding products, prices, alternatives — don't navigate to Google manually.
-3. For product comparisons: read_page to get current product info, then search_web for alternatives.
+3. For product comparisons: use the provided page context for the current product, then search_web for alternatives.
 4. When user says "like this", "similar", "cheaper" — use get_snapshot to recall previous product, then search_web.
 5. Use exact CSS selectors from read_page results. Never guess selectors.
 6. Explain what you're doing and summarize results with bullet points.
-7. If a tool fails, explain what happened and try an alternative.`;
+7. If a tool fails, explain what happened and try an alternative.
+8. For summarization requests, just summarize the provided page context directly — no tools needed.`;
 
 export const OLLAMA_DEFAULT_URL = 'http://localhost:11434/v1';
 export const OPENROUTER_URL = 'https://openrouter.ai/api/v1';

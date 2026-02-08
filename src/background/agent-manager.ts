@@ -132,6 +132,26 @@ function stripToolTags(text: string): string {
 }
 
 // ------------------------------------------------------------------
+// Clean LLM response — strip both known & hallucinated tool tags
+// ------------------------------------------------------------------
+
+function cleanLLMResponse(text: string): string {
+  let cleaned = stripToolTags(text);
+
+  // Strip hallucinated tool-like tags whose names contain underscores
+  // (our tool naming convention) but that aren't in the registry.
+  // Self-closing:  <summarize_page />
+  cleaned = cleaned.replace(/<[a-z][a-z0-9]*_[a-z_]+(?:\s[^>]*)?\s*\/>/gi, '');
+  // Paired:        <summarize_page>...</summarize_page>
+  cleaned = cleaned.replace(
+    /<([a-z][a-z0-9]*_[a-z_]+)(?:\s[^>]*)?>[\s\S]*?<\/\1\s*>/gi,
+    ''
+  );
+
+  return cleaned.trim();
+}
+
+// ------------------------------------------------------------------
 // Unified tool executor – handles permissions, logging, execution
 // ------------------------------------------------------------------
 
@@ -343,7 +363,7 @@ export async function runAgentLoop(
     }
 
     // ── Path C: Plain text — we're done ──────────────────────────
-    return message.content || '';
+    return cleanLLMResponse(message.content || '');
   }
 
   return 'Agent reached maximum iterations. Please try a simpler request.';
