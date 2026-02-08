@@ -124,6 +124,7 @@ declare namespace browser {
 
 interface SpeechRecognitionEvent extends Event {
   readonly results: SpeechRecognitionResultList;
+  readonly resultIndex: number;
 }
 
 interface SpeechRecognitionResultList {
@@ -156,5 +157,10 @@ interface SpeechRecognition extends EventTarget {
 
 // eslint-disable-next-line no-var
 declare var SpeechRecognition: {
+  new (): SpeechRecognition;
+};
+
+// eslint-disable-next-line no-var
+declare var webkitSpeechRecognition: {
   new (): SpeechRecognition;
 };

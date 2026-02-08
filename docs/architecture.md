@@ -63,7 +63,7 @@ Jawad is a Firefox browser extension that turns the browser into an AI-powered o
 - **Responsibilities**:
   - **DOM reading** (`dom-reader.ts`): Extracts page content, product data, interactive elements
   - **Page actions** (`page-actions.ts`): Click, fill, scroll with visual highlighting
-  - **Voice capture**: Runs `SpeechRecognition` API (requires page context, not sidebar)
+  - **Voice capture**: Runs MediaRecorder (Whisper path) and SpeechRecognition (Browser Speech path) — requires page context, not sidebar
   - **Vision fallback** (`vision-fallback.ts`): Screenshot-based fallback for difficult pages
   - **Visual highlighting** (`visual-highlighter.ts`): Highlights elements before interaction
 - **Communication**: Responds to `browser.runtime.onMessage` from background script; sends results back via `browser.runtime.sendMessage`.
@@ -107,28 +107,51 @@ Background sends CHAT_RESPONSE to sidebar
 Sidebar displays the response
 ```
 
-### Voice Input Flow
+### Voice Input Flow (Dual-Mode)
+
+**Whisper Mode** (MediaRecorder → Whisper API):
 
 ```
-User clicks mic button (VoiceButton.tsx)
+User clicks mic (VoiceButton.tsx)
        │
        ▼
 Sidebar ──► port.postMessage({ type: 'START_VOICE' })
        │
        ▼
-Background (index.ts) ──► browser.tabs.sendMessage(tabId, { type: 'START_VOICE_INPUT' })
+Background ──► browser.tabs.sendMessage(tabId, { type: 'START_VOICE_INPUT' })
        │
        ▼
-Content Script (index.ts) ──► starts SpeechRecognition
+Content Script ──► starts MediaRecorder (getUserMedia) ──► sends VOICE_STARTED
        │
-       ▼ (on result)
-Content Script ──► browser.runtime.sendMessage({ type: 'VOICE_RESULT', payload: { transcript } })
+       ▼ (user clicks stop)
+Content Script ──► stops recording ──► base64 audio ──► sends VOICE_AUDIO to background
        │
        ▼
-Background ──► sidebarPort.postMessage({ type: 'VOICE_RESULT', ... })
+Background ──► transcribeAudio() via Whisper API ──► VOICE_RESULT to sidebar
        │
        ▼
 Sidebar (useVoiceInput.ts) ──► calls onResult(transcript)
+```
+
+**Browser Speech Mode** (Web Speech API):
+
+```
+User clicks mic (VoiceButton.tsx)
+       │
+       ▼
+Sidebar ──► port.postMessage({ type: 'START_SPEECH_RECOGNITION' })
+       │
+       ▼
+Background ──► browser.tabs.sendMessage(tabId, { type: 'START_SPEECH_RECOGNITION' })
+       │
+       ▼
+Content Script ──► starts SpeechRecognition ──► sends VOICE_STARTED
+       │
+       ▼ (real-time results)
+Content Script ──► VOICE_SPEECH_RESULT { transcript, isFinal, isInterim }
+       │
+       ▼
+Background ──► relays to sidebar ──► onResult(transcript) when isFinal
 ```
 
 ## Key Design Decisions
@@ -136,7 +159,8 @@ Sidebar (useVoiceInput.ts) ──► calls onResult(transcript)
 | Decision | Rationale |
 |----------|-----------|
 | **Persistent port** for sidebar ↔ background | Enables streaming, avoids reconnection overhead |
-| **Content script for voice** | Firefox sidebar doesn't support `SpeechRecognition`; content scripts have full Web API access |
+| **Content script for voice** | Firefox sidebar doesn't support `getUserMedia` or `SpeechRecognition`; content scripts have full Web API access |
+| **Dual-mode voice** | Whisper for accuracy (API-based), Browser Speech for free real-time use; user chooses |
 | **Intent classification before agent loop** | Prevents hallucinated tool calls for simple Q&A/summarization |
 | **Universal tools-rejection fallback** | Models that don't support function calling gracefully fall back to XML parsing |
 | **Page context injected into system prompt** | Keeps LLM grounded; eliminates unnecessary `read_page` calls |
@@ -145,7 +169,7 @@ Sidebar (useVoiceInput.ts) ──► calls onResult(transcript)
 ## Extension Manifest
 
 - **Manifest V2** (Firefox)
-- **Permissions**: `activeTab`, `storage`, `tabs`, `<all_urls>`
+- **Permissions**: `activeTab`, `storage`, `tabs`, `<all_urls>`, `http://localhost/*`
 - **Sidebar action**: Opens the Jawad panel
 - **Content scripts**: Injected into all pages at `document_idle`
 - **CSP**: `script-src 'self'; object-src 'self'`

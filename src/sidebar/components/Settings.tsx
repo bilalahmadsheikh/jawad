@@ -123,18 +123,24 @@ export function Settings({ llm }: SettingsProps) {
     // Route test through background script — sidebar can't fetch localhost directly
     sendToBackground({
       type: 'TEST_CONNECTION',
-      payload: { baseUrl: s.baseUrl, model: s.model, apiKey: s.apiKey },
+      payload: { provider: s.provider, baseUrl: s.baseUrl, model: s.model, apiKey: s.apiKey },
     });
     // Timeout fallback in case background never responds
+    // 30s for Ollama (cold start can be slow), 20s for cloud providers
+    const timeoutMs = s.provider === 'ollama' ? 30000 : 20000;
     setTimeout(() => {
       setTesting((prev) => {
         if (prev) {
           setTestResult('error');
-          setTestError('Test timed out — is Ollama running?');
+          setTestError(
+            s.provider === 'ollama'
+              ? 'Test timed out — is Ollama running? Run: ollama serve'
+              : 'Test timed out — check your API key and endpoint.'
+          );
         }
         return false;
       });
-    }, 15000);
+    }, timeoutMs);
   }, [s.baseUrl, s.model, s.apiKey]);
 
   const models = DEFAULT_MODELS[s.provider] || [];

@@ -53,9 +53,13 @@ Jawad implements three graduated capability tiers, each increasing power and res
 
 ### Voice-Native Navigation
 - Click the microphone button to speak commands
-- Uses `SpeechRecognition` API via content script
-- Transcripts are sent as chat messages
-- Works on any regular webpage (requires Firefox voice settings enabled)
+- **Dual-mode system**: Choose between Whisper (high accuracy, API-based) or Browser Speech (free, real-time)
+- **Whisper mode**: Content script records via MediaRecorder → background transcribes via Whisper API
+- **Browser Speech mode**: Content script uses Web Speech API (`SpeechRecognition`) for real-time transcript
+- Voice mode preference persisted across sessions
+- All recording delegated to content script (Firefox sidebar cannot access mic directly)
+- Transcripts are automatically submitted as chat messages
+- Works on any regular HTTPS webpage
 
 ### Cross-Site Workflows
 - "Find flights, check my calendar, draft an email"

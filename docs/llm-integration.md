@@ -56,6 +56,19 @@ Many models (especially via Ollama or OpenRouter) don't support native function 
 
 **Detection heuristic**: Status 400/422 plus error text matching `/tool|function|unsupported|not support|invalid.*param/i`
 
+### Friendly Error Messages
+
+The router includes `friendlyApiError()` which maps HTTP status codes to actionable user-facing messages:
+
+| Status | Message |
+|--------|---------|
+| 401 | Invalid API key — double-check your provider key in Settings |
+| 403 (OpenRouter) | API key has no credits or is invalid — add credits at openrouter.ai |
+| 403 (OpenAI) | API key invalid or no billing — check platform.openai.com |
+| 404 | Model not found — check the model name in Settings |
+| 429 | Rate limited — wait and try again |
+| 5xx | Server error — provider may be down |
+
 ### Configuration (`LLMConfig`)
 
 ```typescript
@@ -175,4 +188,14 @@ This ensures the LLM has all necessary information to answer without unnecessary
 - Tab context (tabId, site) refreshed each iteration
 - Permission checked before each tool execution
 - Single `CHAT_RESPONSE` sent after loop completes (prevents premature loading state)
+
+### Conversation History Management
+
+Conversation history is maintained in `message-handler.ts` and trimmed to the **last 100 messages** to prevent unbounded growth and context overflow. The `trimHistory()` function is called after every message addition.
+
+### Connection Testing
+
+The Settings panel includes a **Test Connection** button that routes through the background script (not the sidebar directly, since Firefox CSP blocks sidebar `fetch` to `localhost`). The background script uses `chatCompletion()` with a minimal prompt (`"Say ok"`) and returns a `TEST_RESULT` message with success/failure and a friendly error message.
+
+The timeout is **30 seconds** for Ollama (cold start can be slow) and **20 seconds** for cloud providers.
 

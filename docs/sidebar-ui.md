@@ -106,21 +106,41 @@ Settings are saved to `browser.storage.local` via `SAVE_SETTINGS` and loaded on 
 
 ### States
 - **Idle**: Microphone icon, click to start
-- **Listening**: Pulsing red indicator, live transcript shown
-- **Error**: Error message tooltip with specific guidance
+- **Recording/Listening**: Pulsing red indicator, "Recording... click to stop"
+- **Transcribing**: Pulsing blue + spinner (Whisper mode only), "Transcribing..."
+- **Error**: Amber error tooltip with specific guidance, auto-dismiss after 12s
 
-### Flow
+### Voice Modes
+Users can select between two modes in Settings:
+
+| Mode | Message Sent | How It Works |
+|------|-------------|-------------|
+| **Whisper** (default) | `START_VOICE` | Content script records audio → background transcribes via Whisper API |
+| **Browser Speech** | `START_SPEECH_RECOGNITION` | Content script uses Web Speech API for real-time transcript |
+
+### Flow (Whisper)
 1. Click mic → sends `START_VOICE` to background
 2. Background relays `START_VOICE_INPUT` to content script
-3. Content script runs `SpeechRecognition`
-4. Results relayed back: `VOICE_RESULT` → sidebar
-5. Final transcript inserted as chat message
+3. Content script starts MediaRecorder → sends `VOICE_STARTED`
+4. Click stop → sends `STOP_VOICE` → content script stops → sends `VOICE_AUDIO`
+5. Background transcribes via Whisper → sends `VOICE_RESULT`
+6. Final transcript inserted as chat message
+
+### Flow (Browser Speech)
+1. Click mic → sends `START_SPEECH_RECOGNITION` to background
+2. Background relays to content script
+3. Content script starts SpeechRecognition → sends `VOICE_STARTED`
+4. Real-time results: `VOICE_SPEECH_RESULT` with interim/final transcripts
+5. Click stop → sends `STOP_SPEECH_RECOGNITION`
+6. Final transcript inserted as chat message
 
 ### Error Messages
-- **Voice not enabled**: Instructions to enable in `about:config`
-- **Permission denied**: Prompt to allow microphone access
-- **No speech detected**: Prompt to try again
-- **Wrong page**: Navigate to a regular webpage first
+- **Mic blocked**: Click the lock icon in the address bar → Allow microphone
+- **Provider doesn't support Whisper**: Use Browser Speech mode or switch to OpenAI/OpenRouter
+- **No speech detected**: Speak clearly and try again
+- **Wrong page**: Navigate to a regular HTTPS webpage first
+- **Insecure context**: Voice requires HTTPS
+- **No mic found**: Connect a microphone and try again
 
 ## Permission Modal (`PermissionModal.tsx`)
 
@@ -199,8 +219,11 @@ const unsubscribe = addMessageHandler((msg) => {
 |------|---------|---------|
 | `CHAT_MESSAGE` | `{ content: string }` | Send chat message |
 | `SUMMARIZE_PAGE` | — | Request page summary |
-| `START_VOICE` | — | Begin voice capture |
-| `STOP_VOICE` | — | End voice capture |
+| `START_VOICE` | — | Begin voice capture (Whisper mode) |
+| `STOP_VOICE` | — | End voice capture (Whisper mode) |
+| `START_SPEECH_RECOGNITION` | — | Begin voice capture (Browser Speech mode) |
+| `STOP_SPEECH_RECOGNITION` | — | End voice capture (Browser Speech mode) |
+| `TEST_CONNECTION` | `{ baseUrl, model, apiKey, provider }` | Test LLM connection |
 | `PERMISSION_RESPONSE` | `{ requestId: string, decision: string }` | Respond to permission request |
 | `SAVE_SETTINGS` | `LLMConfig` | Save provider settings |
 | `GET_SETTINGS` | — | Load saved settings |
@@ -216,9 +239,13 @@ const unsubscribe = addMessageHandler((msg) => {
 | `ACTION_LOG_UPDATE` | `ActionLogEntry` | Tool execution log entry |
 | `PERMISSION_REQUEST` | `PermissionRequest` | Ask user permission |
 | `SETTINGS` | `LLMConfig \| null` | Return saved settings |
-| `VOICE_RESULT` | `{ transcript: string, isFinal: boolean }` | Voice transcription result |
+| `VOICE_STARTED` | — | Voice recording has started |
+| `VOICE_TRANSCRIBING` | — | Audio sent to Whisper, awaiting result |
+| `VOICE_RESULT` | `{ transcript: string, isFinal: boolean }` | Whisper transcription result |
+| `VOICE_SPEECH_RESULT` | `{ transcript: string, isFinal: boolean, isInterim?: boolean }` | Browser Speech real-time result |
 | `VOICE_END` | — | Voice capture ended |
 | `VOICE_ERROR` | `{ error: string }` | Voice error message |
+| `TEST_RESULT` | `{ success: boolean, error?: string }` | LLM connection test result |
 | `WORKFLOW_UPDATE` | `WorkflowPlan` | Workflow progress |
 
 ## Styling

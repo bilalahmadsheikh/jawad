@@ -49,7 +49,7 @@ Request a page summary.
 ```
 
 #### `START_VOICE`
-Begin voice capture (relayed to content script as `START_VOICE_INPUT`).
+Begin voice capture in Whisper mode (relayed to content script as `START_VOICE_INPUT`).
 ```json
 {
   "type": "START_VOICE"
@@ -57,10 +57,40 @@ Begin voice capture (relayed to content script as `START_VOICE_INPUT`).
 ```
 
 #### `STOP_VOICE`
-End voice capture (relayed to content script as `STOP_VOICE_INPUT`).
+End voice capture in Whisper mode (relayed to content script as `STOP_VOICE_INPUT`).
 ```json
 {
   "type": "STOP_VOICE"
+}
+```
+
+#### `START_SPEECH_RECOGNITION`
+Begin voice capture in Browser Speech mode (relayed to content script).
+```json
+{
+  "type": "START_SPEECH_RECOGNITION"
+}
+```
+
+#### `STOP_SPEECH_RECOGNITION`
+End voice capture in Browser Speech mode (relayed to content script).
+```json
+{
+  "type": "STOP_SPEECH_RECOGNITION"
+}
+```
+
+#### `TEST_CONNECTION`
+Test LLM provider connection (handled by background script).
+```json
+{
+  "type": "TEST_CONNECTION",
+  "payload": {
+    "baseUrl": "http://localhost:11434/v1",
+    "model": "llama3",
+    "apiKey": "",
+    "provider": "ollama"
+  }
 }
 ```
 
@@ -193,14 +223,43 @@ Return saved settings (response to `GET_SETTINGS`).
 
 Payload is `null` if no settings have been saved yet.
 
+#### `VOICE_STARTED`
+Voice recording has started (mic is active).
+```json
+{
+  "type": "VOICE_STARTED"
+}
+```
+
+#### `VOICE_TRANSCRIBING`
+Audio has been sent to Whisper API, awaiting transcription result.
+```json
+{
+  "type": "VOICE_TRANSCRIBING"
+}
+```
+
 #### `VOICE_RESULT`
-Voice transcription result.
+Whisper transcription result.
 ```json
 {
   "type": "VOICE_RESULT",
   "payload": {
     "transcript": "find me a cheaper alternative",
     "isFinal": true
+  }
+}
+```
+
+#### `VOICE_SPEECH_RESULT`
+Browser Speech API real-time result (interim or final).
+```json
+{
+  "type": "VOICE_SPEECH_RESULT",
+  "payload": {
+    "transcript": "find me a cheaper",
+    "isFinal": false,
+    "isInterim": true
   }
 }
 ```
@@ -219,7 +278,29 @@ Voice capture error.
 {
   "type": "VOICE_ERROR",
   "payload": {
-    "error": "Speech recognition not available in this browser"
+    "error": "Mic blocked. Click the lock icon in the address bar → Allow microphone."
+  }
+}
+```
+
+#### `TEST_RESULT`
+LLM connection test result (response to `TEST_CONNECTION`).
+```json
+{
+  "type": "TEST_RESULT",
+  "payload": {
+    "success": true
+  }
+}
+```
+
+Or on failure:
+```json
+{
+  "type": "TEST_RESULT",
+  "payload": {
+    "success": false,
+    "error": "Invalid API key. Double-check your openrouter key in Settings."
   }
 }
 ```
@@ -321,7 +402,7 @@ Scroll the page.
 ```
 
 #### `START_VOICE_INPUT`
-Begin voice capture in content script context.
+Begin MediaRecorder voice capture in content script (Whisper path).
 ```json
 // Request
 { "type": "START_VOICE_INPUT" }
@@ -331,10 +412,30 @@ Begin voice capture in content script context.
 ```
 
 #### `STOP_VOICE_INPUT`
-Stop voice capture.
+Stop MediaRecorder voice capture (Whisper path).
 ```json
 // Request
 { "type": "STOP_VOICE_INPUT" }
+
+// Response
+{ "success": true }
+```
+
+#### `START_SPEECH_RECOGNITION`
+Begin Web Speech API recognition in content script (Browser Speech path).
+```json
+// Request
+{ "type": "START_SPEECH_RECOGNITION" }
+
+// Response
+{ "success": true }
+```
+
+#### `STOP_SPEECH_RECOGNITION`
+Stop Web Speech API recognition (Browser Speech path).
+```json
+// Request
+{ "type": "STOP_SPEECH_RECOGNITION" }
 
 // Response
 { "success": true }
@@ -344,9 +445,27 @@ Stop voice capture.
 
 Sent via `browser.runtime.sendMessage(message)`. These are one-way (fire-and-forget), relayed to the sidebar port by the background script.
 
-#### `VOICE_RESULT`
+#### `VOICE_STARTED`
 ```json
-{ "type": "VOICE_RESULT", "payload": { "transcript": "hello world", "isFinal": true } }
+{ "type": "VOICE_STARTED" }
+```
+
+#### `VOICE_TRANSCRIBING`
+Sent after recording stops, before audio is sent to background (Whisper path).
+```json
+{ "type": "VOICE_TRANSCRIBING" }
+```
+
+#### `VOICE_AUDIO`
+Recorded audio data for Whisper transcription (Whisper path).
+```json
+{ "type": "VOICE_AUDIO", "payload": { "audio": "<base64>", "mimeType": "audio/webm" } }
+```
+
+#### `VOICE_SPEECH_RESULT`
+Real-time transcript from Web Speech API (Browser Speech path).
+```json
+{ "type": "VOICE_SPEECH_RESULT", "payload": { "transcript": "hello world", "isFinal": true, "isInterim": false } }
 ```
 
 #### `VOICE_END`
@@ -356,7 +475,7 @@ Sent via `browser.runtime.sendMessage(message)`. These are one-way (fire-and-for
 
 #### `VOICE_ERROR`
 ```json
-{ "type": "VOICE_ERROR", "payload": { "error": "not-allowed" } }
+{ "type": "VOICE_ERROR", "payload": { "error": "MIC_DENIED: Microphone access was denied..." } }
 ```
 
 #### `PAGE_CONTENT_READY`

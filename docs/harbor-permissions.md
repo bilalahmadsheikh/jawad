@@ -42,8 +42,8 @@ checkPermission(policy, toolName, permLevel, site)
        │   └── trustLevel covers permLevel → auto-approve
        │
        ├── Check defaults for permission level:
-       │   ├── read-only → defaults.readOnly ('auto-approve' | 'ask')
-       │   ├── navigate → defaults.navigate ('auto-approve' | 'ask')
+       │   ├── read-only → defaults.readOnly ('auto-approve' | 'ask' | 'deny')
+       │   ├── navigate → defaults.navigate ('auto-approve' | 'ask' | 'deny')
        │   ├── interact → defaults.interact ('ask' | 'deny')
        │   └── submit → defaults.submit ('ask' | 'deny')
        │
@@ -74,8 +74,8 @@ interface ToolOverride {
 }
 
 interface HarborDefaults {
-  readOnly: 'auto-approve' | 'ask';
-  navigate: 'auto-approve' | 'ask';
+  readOnly: 'auto-approve' | 'ask' | 'deny';
+  navigate: 'auto-approve' | 'ask' | 'deny';
   interact: 'ask' | 'deny';
   submit: 'ask' | 'deny';
   criticalActions: string[];   // Keywords that flag high-risk actions

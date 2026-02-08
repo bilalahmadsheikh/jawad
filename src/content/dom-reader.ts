@@ -443,11 +443,12 @@ function getNthChildPath(el: HTMLElement): string {
   let current: HTMLElement | null = el;
 
   while (current && current !== document.body && parts.length < 4) {
-    const parent = current.parentElement;
-    if (!parent) break;
+    const parentEl: HTMLElement | null = current.parentElement;
+    if (!parentEl) break;
 
-    const sameTagSiblings = Array.from(parent.children).filter(
-      (c) => c.tagName === current!.tagName
+    const currentTag = current.tagName;
+    const sameTagSiblings = Array.from(parentEl.children).filter(
+      (c: Element) => c.tagName === currentTag
     );
     const tag = current.tagName.toLowerCase();
 
@@ -455,11 +456,11 @@ function getNthChildPath(el: HTMLElement): string {
       parts.unshift(tag);
     } else {
       const index =
-        Array.from(parent.children).indexOf(current) + 1;
+        Array.from(parentEl.children).indexOf(current) + 1;
       parts.unshift(`${tag}:nth-child(${index})`);
     }
 
-    current = parent;
+    current = parentEl;
   }
 
   return parts.join(' > ');

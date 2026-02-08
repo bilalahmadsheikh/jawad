@@ -72,10 +72,10 @@ export interface ToolOverride {
 }
 
 export interface HarborDefaults {
-  readOnly: 'auto-approve' | 'ask';
-  navigate: 'auto-approve' | 'ask';
-  interact: 'ask' | 'deny';
-  submit: 'ask' | 'deny';
+  readOnly: 'auto-approve' | 'ask' | 'deny';
+  navigate: 'auto-approve' | 'ask' | 'deny';
+  interact: 'auto-approve' | 'ask' | 'deny';
+  submit: 'auto-approve' | 'ask' | 'deny';
   criticalActions: string[];
 }
 

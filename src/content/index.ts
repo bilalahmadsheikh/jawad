@@ -282,7 +282,8 @@ function stopVoiceCapture(): void {
 
 const SpeechRecognitionAPI =
   (typeof window !== 'undefined' &&
-    (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition)) ||
+    ((typeof SpeechRecognition !== 'undefined' && SpeechRecognition) ||
+     (typeof webkitSpeechRecognition !== 'undefined' && webkitSpeechRecognition))) ||
   null;
 
 function startSpeechRecognition(): Promise<{ success: boolean; error?: string }> {

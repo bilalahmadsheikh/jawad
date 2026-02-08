@@ -92,12 +92,30 @@ Settings:
 
 ## Enable Voice Input
 
-Voice input requires Firefox configuration:
+Jawad supports two voice modes, selectable in Settings:
+
+### Whisper Mode (Default — Recommended)
+
+No special Firefox configuration needed. Requires an LLM provider that supports the Whisper API (OpenAI or OpenRouter).
+
+1. Configure OpenAI or OpenRouter in Settings
+2. Select **Whisper** as the voice mode in Settings
+3. Navigate to any HTTPS webpage
+4. Click the microphone button — Firefox will prompt for mic permission on the page
+5. Speak your command, then click stop → audio is transcribed via Whisper
+
+### Browser Speech Mode (Free)
+
+Uses the Web Speech API. May require Firefox configuration:
 
 1. Open `about:config` in Firefox
 2. Search for `media.webspeech.recognition.enable` → set to `true`
 3. Search for `media.webspeech.recognition.force_enable` → set to `true`
 4. Reload the extension
+5. Select **Browser Speech** as the voice mode in Settings
+6. Navigate to any HTTPS webpage and click the mic button
+
+**Note**: Browser Speech mode provides real-time interim results but accuracy varies. Whisper mode provides higher accuracy but requires API credits.
 
 ## Development
 
@@ -162,10 +180,12 @@ npm run lint    # runs tsc --noEmit
 - Check background script console in `about:debugging` → Jawad → Inspect
 
 ### Voice not working
-- Enable `media.webspeech.recognition.enable` in `about:config`
-- Enable `media.webspeech.recognition.force_enable` in `about:config`
-- Navigate to a regular webpage (not `about:*` or extension pages)
-- Allow microphone permission when prompted
+- **Both modes**: Navigate to a regular HTTPS webpage (not `about:*` or extension pages)
+- **Both modes**: Allow microphone permission when Firefox prompts (click the lock icon if previously denied)
+- **Whisper mode**: Ensure your LLM provider supports Whisper (OpenAI or OpenRouter)
+- **Browser Speech mode**: Enable `media.webspeech.recognition.enable` in `about:config`
+- **Browser Speech mode**: Enable `media.webspeech.recognition.force_enable` in `about:config`
+- Check the voice mode setting in the Settings tab
 
 ### Content script not injecting
 - Reload the page after loading the extension

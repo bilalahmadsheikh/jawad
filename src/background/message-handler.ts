@@ -11,12 +11,21 @@ import { DEFAULT_SYSTEM_PROMPT, generateId } from '../lib/constants';
 import { cachePageSnapshot, getLastProductContext } from '../lib/page-cache';
 
 // Conversation history for the agent loop
+// Trimmed to last MAX_HISTORY_LENGTH messages to prevent context overflow
+const MAX_HISTORY_LENGTH = 40;
+
 let conversationHistory: Array<{
   role: string;
   content: string | null;
   tool_calls?: unknown[];
   tool_call_id?: string;
 }> = [];
+
+function trimHistory(): void {
+  if (conversationHistory.length > MAX_HISTORY_LENGTH) {
+    conversationHistory = conversationHistory.slice(-MAX_HISTORY_LENGTH);
+  }
+}
 
 // Pending permission requests waiting for user response
 const pendingPermissions = new Map<
@@ -276,6 +285,7 @@ async function handleChatMessage(
 
     // Add user message to history
     conversationHistory.push({ role: 'user', content });
+    trimHistory();
 
     // Build full message list
     const messages = [
@@ -293,6 +303,7 @@ async function handleChatMessage(
 
     // Add response to history
     conversationHistory.push({ role: 'assistant', content: response });
+    trimHistory();
 
     // Send response to sidebar
     port.postMessage({
@@ -469,55 +480,44 @@ function handlePermissionResponse(
 /**
  * Test connection to the configured LLM provider.
  * Runs in the background script which has full network access.
+ * Uses chatCompletion so it gets the same headers, fallback logic,
+ * and friendly error messages as real chat requests.
  */
 async function handleTestConnection(
   payload: Record<string, unknown>,
   port: browser.Port
 ): Promise<void> {
+  const provider = (payload.provider as string) || 'ollama';
   const baseUrl = (payload.baseUrl as string) || 'http://localhost:11434/v1';
   const model = (payload.model as string) || 'llama3';
   const apiKey = (payload.apiKey as string) || '';
 
-  try {
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+  const testConfig: LLMConfig = {
+    provider: provider as LLMConfig['provider'],
+    baseUrl,
+    model,
+    apiKey,
+  };
 
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: 'Say ok' }],
-        max_tokens: 5,
-      }),
+  try {
+    const response = await chatCompletion(testConfig, {
+      messages: [{ role: 'user', content: 'Say "ok" and nothing else.' }],
+      max_tokens: 5,
     });
 
-    if (response.ok) {
+    if (response.choices?.[0]?.message?.content) {
       port.postMessage({ type: 'TEST_RESULT', payload: { success: true } });
     } else {
-      const errText = await response.text().catch(() => '');
-      const status = response.status;
-      let friendlyMsg = `HTTP ${status}: ${errText.substring(0, 150) || response.statusText}`;
-
-      if (status === 401) {
-        friendlyMsg = 'Invalid API key. Double-check your key in Settings.';
-      } else if (status === 403) {
-        friendlyMsg = '403 Forbidden — your API key has no credits, is invalid, or the model is restricted. Check your provider dashboard.';
-      } else if (status === 404) {
-        friendlyMsg = `Model "${model}" not found. Make sure it\'s available on your provider.`;
-      } else if (status === 429) {
-        friendlyMsg = 'Rate limited. Wait a moment and try again.';
-      }
-
       port.postMessage({
         type: 'TEST_RESULT',
-        payload: { success: false, error: friendlyMsg },
+        payload: { success: false, error: 'LLM responded but returned no content. Check your model name.' },
       });
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    let friendlyMsg = `Connection failed: ${msg}`;
+    let friendlyMsg = msg;
 
+    // Enhance network errors
     if (msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED')) {
       friendlyMsg = `Cannot reach ${baseUrl}. Is the server running? For Ollama, run: ollama serve`;
     }
