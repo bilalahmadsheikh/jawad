@@ -7,8 +7,10 @@
 import { readPage } from './dom-reader';
 import { clickElement, fillForm, scrollPage } from './page-actions';
 
-// ---------- Voice capture state ----------
-let activeRecognition: SpeechRecognition | null = null;
+// ---------- Voice capture state (MediaRecorder-based) ----------
+let mediaRecorder: MediaRecorder | null = null;
+let audioChunks: Blob[] = [];
+let mediaStream: MediaStream | null = null;
 
 // ---------- Message listener ----------
 browser.runtime.onMessage.addListener(
@@ -32,7 +34,7 @@ browser.runtime.onMessage.addListener(
       case 'SCROLL_PAGE':
         return scrollPage(message.payload!.direction as 'up' | 'down');
 
-      // Voice input relay — sidebar can't use SpeechRecognition directly
+      // Voice input — uses MediaRecorder for reliable audio capture
       case 'START_VOICE_INPUT': {
         startVoiceCapture();
         return Promise.resolve({ success: true });
@@ -49,77 +51,161 @@ browser.runtime.onMessage.addListener(
   }
 );
 
-// ---------- Voice capture ----------
+// ---------- Voice capture (MediaRecorder) ----------
 
+/**
+ * Convert a Blob to a base64 string (without the data: prefix).
+ */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = reader.result as string;
+      // Strip "data:audio/webm;base64," prefix → pure base64
+      const base64 = dataUrl.split(',')[1] || '';
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error('Failed to read audio blob'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Determine the best supported audio MIME type for MediaRecorder.
+ */
+function getSupportedMimeType(): string {
+  const candidates = [
+    'audio/webm;codecs=opus',
+    'audio/webm',
+    'audio/ogg;codecs=opus',
+    'audio/ogg',
+  ];
+  for (const mime of candidates) {
+    if (MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return ''; // browser default
+}
+
+/**
+ * Start recording audio from the microphone using MediaRecorder.
+ * When stopped, the recorded audio is sent to the background script
+ * for transcription via the user's configured LLM provider (Whisper API).
+ */
 function startVoiceCapture(): void {
-  if (activeRecognition) {
-    activeRecognition.stop();
-    activeRecognition = null;
+  // Stop any existing recording
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((t) => t.stop());
+    mediaStream = null;
   }
 
-  const SpeechRecognitionAPI = (
-    window as unknown as {
-      SpeechRecognition?: new () => SpeechRecognition;
-      webkitSpeechRecognition?: new () => SpeechRecognition;
-    }
-  ).SpeechRecognition ||
-    (
-      window as unknown as {
-        webkitSpeechRecognition?: new () => SpeechRecognition;
-      }
-    ).webkitSpeechRecognition;
-
-  if (!SpeechRecognitionAPI) {
+  // Check if MediaRecorder is available
+  if (typeof MediaRecorder === 'undefined') {
     browser.runtime.sendMessage({
       type: 'VOICE_ERROR',
-      payload: { error: 'Speech recognition not available on this page. Try enabling media.webspeech.recognition.enable in about:config.' },
+      payload: { error: 'MediaRecorder not available on this page.' },
     });
     return;
   }
 
-  try {
-    const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
+  navigator.mediaDevices
+    .getUserMedia({ audio: true })
+    .then((stream) => {
+      mediaStream = stream;
+      audioChunks = [];
 
-    recognition.onresult = (event: SpeechRecognitionEvent) => {
-      const result = event.results[event.results.length - 1];
-      const transcript = result[0].transcript;
-      browser.runtime.sendMessage({
-        type: 'VOICE_RESULT',
-        payload: { transcript, isFinal: result.isFinal },
-      });
-    };
+      const mimeType = getSupportedMimeType();
+      const recorderOptions: MediaRecorderOptions = {};
+      if (mimeType) recorderOptions.mimeType = mimeType;
 
-    recognition.onerror = (event: Event) => {
-      const errorEvent = event as Event & { error?: string };
+      mediaRecorder = new MediaRecorder(stream, recorderOptions);
+
+      mediaRecorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        // Release the microphone
+        mediaStream?.getTracks().forEach((t) => t.stop());
+        mediaStream = null;
+
+        if (audioChunks.length === 0) {
+          browser.runtime.sendMessage({
+            type: 'VOICE_ERROR',
+            payload: { error: 'No audio was captured. Please try again.' },
+          });
+          return;
+        }
+
+        const actualMime = mimeType || 'audio/webm';
+        const audioBlob = new Blob(audioChunks, { type: actualMime });
+
+        // Notify sidebar we're now processing the audio
+        browser.runtime.sendMessage({ type: 'VOICE_TRANSCRIBING' });
+
+        try {
+          const base64 = await blobToBase64(audioBlob);
+          // Send audio to background for Whisper transcription
+          browser.runtime.sendMessage({
+            type: 'VOICE_AUDIO',
+            payload: {
+              audio: base64,
+              mimeType: actualMime.split(';')[0], // e.g. "audio/webm"
+            },
+          });
+        } catch (err) {
+          browser.runtime.sendMessage({
+            type: 'VOICE_ERROR',
+            payload: {
+              error: `Failed to process audio: ${err instanceof Error ? err.message : String(err)}`,
+            },
+          });
+        }
+      };
+
+      mediaRecorder.onerror = () => {
+        browser.runtime.sendMessage({
+          type: 'VOICE_ERROR',
+          payload: { error: 'Recording error occurred.' },
+        });
+      };
+
+      // Start recording — collect data in chunks for robustness
+      mediaRecorder.start(250);
+
+      // Notify that we are now recording
+      browser.runtime.sendMessage({ type: 'VOICE_STARTED' });
+    })
+    .catch((err: Error) => {
       browser.runtime.sendMessage({
         type: 'VOICE_ERROR',
-        payload: { error: errorEvent.error || 'Recognition error' },
+        payload: {
+          error: err.name === 'NotAllowedError'
+            ? 'Microphone permission denied. Allow mic access for this site and try again.'
+            : `Microphone error: ${err.message}`,
+        },
       });
-      activeRecognition = null;
-    };
-
-    recognition.onend = () => {
-      browser.runtime.sendMessage({ type: 'VOICE_END' });
-      activeRecognition = null;
-    };
-
-    activeRecognition = recognition;
-    recognition.start();
-  } catch (e) {
-    browser.runtime.sendMessage({
-      type: 'VOICE_ERROR',
-      payload: { error: `Failed to start: ${e instanceof Error ? e.message : String(e)}` },
     });
-  }
 }
 
+/**
+ * Stop the active recording. This triggers onstop which sends
+ * the recorded audio to the background for transcription.
+ */
 function stopVoiceCapture(): void {
-  if (activeRecognition) {
-    activeRecognition.stop();
-    activeRecognition = null;
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  } else {
+    // No active recording — release stream and notify
+    if (mediaStream) {
+      mediaStream.getTracks().forEach((t) => t.stop());
+      mediaStream = null;
+    }
+    browser.runtime.sendMessage({ type: 'VOICE_END' });
   }
 }
 

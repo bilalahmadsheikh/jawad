@@ -5,6 +5,76 @@
 
 import type { LLMConfig } from './types';
 
+// ============================================================
+// Audio Transcription (Whisper API)
+// ============================================================
+
+/**
+ * Transcribe audio using the provider's OpenAI-compatible /audio/transcriptions endpoint.
+ * Works with OpenAI (Whisper), OpenRouter, and Ollama (if whisper model is available).
+ */
+export async function transcribeAudio(
+  config: LLMConfig,
+  audioBase64: string,
+  mimeType: string
+): Promise<string> {
+  const baseUrl = config.baseUrl.replace(/\/+$/, '');
+  const url = `${baseUrl}/audio/transcriptions`;
+
+  // Decode base64 → binary
+  const binaryString = atob(audioBase64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  // Build a File object so FormData sends the right filename
+  const ext = mimeType.includes('webm')
+    ? 'webm'
+    : mimeType.includes('ogg')
+      ? 'ogg'
+      : mimeType.includes('mp4')
+        ? 'mp4'
+        : 'wav';
+  const audioBlob = new Blob([bytes], { type: mimeType });
+  const audioFile = new File([audioBlob], `recording.${ext}`, { type: mimeType });
+
+  const formData = new FormData();
+  formData.append('file', audioFile);
+  formData.append('model', 'whisper-1');
+
+  const headers: Record<string, string> = {};
+  if (config.apiKey) {
+    headers['Authorization'] = `Bearer ${config.apiKey}`;
+  }
+  if (config.provider === 'openrouter') {
+    headers['HTTP-Referer'] = 'https://jawad.dev';
+    headers['X-Title'] = 'Jawad';
+  }
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text().catch(() => '');
+    if (response.status === 404) {
+      throw new Error(
+        `Your provider (${config.provider}) does not support audio transcription at ${url}. ` +
+        'Try using OpenAI or an OpenAI-compatible provider that supports Whisper.'
+      );
+    }
+    throw new Error(
+      `Transcription failed (${response.status}): ${errorBody || response.statusText}`
+    );
+  }
+
+  const result = await response.json();
+  return result.text || '';
+}
+
 export interface ChatCompletionOptions {
   messages: Array<{
     role: string;
