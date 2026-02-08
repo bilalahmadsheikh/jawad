@@ -12,14 +12,11 @@ interface VoiceButtonProps {
 }
 
 /**
- * Voice input button with visual states:
- *   - Idle: mic icon, click to start
- *   - Recording/Listening: pulsing red, click to stop
+ * Voice input button with premium visual states:
+ *   - Idle: mic icon with subtle glow on hover
+ *   - Recording/Listening: pulsing red ring, click to stop
  *   - Transcribing: blue spinner (Whisper mode only)
  *   - Error: amber icon with tooltip
- *
- * All recording is delegated to the content script via the background.
- * The sidebar never touches getUserMedia or MediaRecorder directly.
  */
 export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(function VoiceButton({ onResult, disabled }, ref) {
   const {
@@ -27,10 +24,8 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
     voiceMode, startListening, stopListening, clearError,
   } = useVoiceInput(onResult);
 
-  // Expose startListening to parent via ref
   useImperativeHandle(ref, () => ({ startListening }), [startListening]);
 
-  // Auto-dismiss errors after 10 seconds
   useEffect(() => {
     if (error) {
       const t = setTimeout(clearError, 10000);
@@ -46,73 +41,110 @@ export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(funct
   else if (error) title = 'Voice error — click to retry';
 
   const handleClick = () => {
-    if (isTranscribing) return; // can't interrupt transcription
+    if (isTranscribing) return;
     if (isListening) stopListening();
     else startListening();
   };
 
-  // CSS class for button state
-  let stateClass = 'vbtn';
-  if (isListening) stateClass = 'vbtn-listening';
-  else if (isTranscribing) stateClass = 'vbtn-transcribing';
-  else if (error) stateClass = 'vbtn-error';
+  // Dynamic button styles
+  const btnStyle: React.CSSProperties = isListening
+    ? { background: '#dc2626', color: '#fff', boxShadow: '0 0 20px rgba(220,38,38,0.5), 0 0 40px rgba(220,38,38,0.2)' }
+    : isTranscribing
+      ? { background: '#2563eb', color: '#fff', boxShadow: '0 0 20px rgba(37,99,235,0.5)' }
+      : error
+        ? { background: '#b45309', color: '#fff' }
+        : { background: 'transparent', color: '#4a5c72' };
 
   return (
     <div className="relative">
       <button
         onClick={handleClick}
         disabled={disabled || isTranscribing}
-        className={`relative z-10 p-2 rounded-lg transition-all duration-200 ${stateClass} ${isListening ? 'voice-ring' : ''}`}
+        className={`relative z-10 p-2.5 rounded-xl transition-all duration-300 ${isListening ? 'voice-ring' : ''}`}
+        style={btnStyle}
         title={title}
+        onMouseEnter={(e) => {
+          if (!isListening && !isTranscribing && !error) {
+            (e.currentTarget as HTMLElement).style.color = '#e8792b';
+            (e.currentTarget as HTMLElement).style.background = 'rgba(232,121,43,0.08)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isListening && !isTranscribing && !error) {
+            (e.currentTarget as HTMLElement).style.color = '#4a5c72';
+            (e.currentTarget as HTMLElement).style.background = 'transparent';
+          }
+        }}
       >
         {/* Ping animation while recording */}
         {isListening && (
-          <span className="absolute inset-0 rounded-lg animate-ping opacity-25 pointer-events-none vbtn-ping" />
+          <span
+            className="absolute inset-0 rounded-xl animate-ping pointer-events-none"
+            style={{ background: 'rgba(220,38,38,0.3)' }}
+          />
         )}
 
         {isTranscribing ? (
-          <Loader2 size={14} className="animate-spin" />
+          <Loader2 size={15} className="animate-spin" />
         ) : error ? (
-          <AlertTriangle size={14} />
+          <AlertTriangle size={15} />
         ) : isListening ? (
-          <MicOff size={14} />
+          <MicOff size={15} />
         ) : (
-          <Mic size={14} />
+          <Mic size={15} />
         )}
       </button>
 
-      {/* Recording/Listening tooltip */}
+      {/* Recording tooltip */}
       {isListening && !transcript && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-lg z-50 pointer-events-none tooltip-recording">
-          🎤 {voiceMode === 'browser' ? 'Listening…' : 'Recording…'}
+        <div
+          className="absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap z-50 pointer-events-none anim-slide-in"
+          style={{ background: '#dc2626', color: '#fff', boxShadow: '0 4px 15px rgba(220,38,38,0.3)' }}
+        >
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-white anim-alive" />
+            {voiceMode === 'browser' ? 'Listening…' : 'Recording…'}
+          </span>
         </div>
       )}
 
-      {/* Live transcript (Browser Speech real-time) */}
+      {/* Live transcript */}
       {isListening && transcript && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg text-[11px] max-w-[180px] shadow-lg z-50 pointer-events-none tooltip-recording line-clamp-2">
-          {transcript}
+        <div
+          className="absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-3 py-2 rounded-lg text-[11px] max-w-[180px] z-50 pointer-events-none anim-slide-in"
+          style={{ background: '#dc2626', color: '#fff', boxShadow: '0 4px 15px rgba(220,38,38,0.3)' }}
+        >
+          <span className="line-clamp-2">{transcript}</span>
         </div>
       )}
 
-      {/* Transcribing tooltip (Whisper mode) */}
+      {/* Transcribing tooltip */}
       {isTranscribing && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-lg z-50 pointer-events-none animate-pulse tooltip-transcribing">
+        <div
+          className="absolute left-full top-1/2 -translate-y-1/2 ml-2.5 px-3 py-1.5 rounded-lg text-[10px] font-bold whitespace-nowrap z-50 pointer-events-none animate-pulse anim-slide-in"
+          style={{ background: '#2563eb', color: '#fff', boxShadow: '0 4px 15px rgba(37,99,235,0.3)' }}
+        >
           ⏳ Transcribing…
         </div>
       )}
 
       {/* Error tooltip */}
       {error && !busy && (
-        <div className="absolute bottom-full left-0 mb-2 px-2.5 py-1.5 rounded-lg text-[11px] max-w-[220px] shadow-lg z-50 tooltip-error">
+        <div
+          className="absolute bottom-full left-0 mb-2.5 px-3 py-2 rounded-xl text-[11px] max-w-[220px] z-50 anim-slide-in"
+          style={{ background: '#301808', border: '1px solid #5c2a0a', color: '#fbbf6a', boxShadow: '0 4px 15px rgba(0,0,0,0.3)' }}
+        >
           <div className="flex items-start gap-1.5">
-            <AlertTriangle size={11} className="flex-shrink-0 mt-0.5 tooltip-error-icon" />
+            <AlertTriangle size={11} className="flex-shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
             <span className="leading-relaxed">{error}</span>
             <button
               onClick={(e) => { e.stopPropagation(); clearError(); }}
-              className="flex-shrink-0 ml-1 hover:text-white transition-colors"
+              className="flex-shrink-0 ml-1 transition-colors"
+              style={{ color: '#8b6230' }}
               title="Dismiss error"
               aria-label="Dismiss error"
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#fbbf6a'; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#8b6230'; }}
             >
               <X size={10} />
             </button>
