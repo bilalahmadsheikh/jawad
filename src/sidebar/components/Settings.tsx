@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_MODELS } from '../../lib/constants';
 import type { LLMActions } from '../hooks/useLLM';
 import { sendToBackground, addMessageHandler } from '../lib/port';
-import { Save, CheckCircle, AlertCircle, Loader2, Server, Key, Cpu, MessageSquareText, Mic, Zap } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, Loader2, Server, Key, Cpu, MessageSquareText, Mic, Zap, RefreshCw } from 'lucide-react';
 
 const VOICE_MODE_KEY = 'jawad_voice_mode';
 
@@ -59,6 +59,8 @@ export function Settings({ llm }: SettingsProps) {
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [voiceMode, setVoiceMode] = useState<'whisper' | 'browser'>('whisper');
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   useEffect(() => {
     browser.storage.local.get(VOICE_MODE_KEY).then((d) => {
@@ -73,7 +75,7 @@ export function Settings({ llm }: SettingsProps) {
     browser.storage.local.set({ [VOICE_MODE_KEY]: mode }).catch(() => {});
   };
 
-  // Listen for TEST_RESULT from background script
+  // Listen for TEST_RESULT and OLLAMA_MODELS from background script
   useEffect(() => {
     const unsub = addMessageHandler((msg) => {
       if (msg.type === 'TEST_RESULT') {
@@ -81,6 +83,13 @@ export function Settings({ llm }: SettingsProps) {
         setTestResult(p.success ? 'success' : 'error');
         setTestError(p.success ? null : (p.error || 'Unknown error'));
         setTesting(false);
+      }
+      if (msg.type === 'OLLAMA_MODELS') {
+        const p = msg.payload as { models: string[] };
+        if (p.models && p.models.length > 0) {
+          setOllamaModels(p.models);
+        }
+        setFetchingModels(false);
       }
     });
     return unsub;
@@ -93,13 +102,31 @@ export function Settings({ llm }: SettingsProps) {
       const data = await browser.storage.local.get(['jawad_config', 'jawad_systemPrompt']);
       if (data.jawad_config) {
         const c = data.jawad_config as SettingsState;
+        const provider = c.provider || 'ollama';
         setS({
-          provider: c.provider || 'ollama', apiKey: c.apiKey || '',
+          provider, apiKey: c.apiKey || '',
           model: c.model || 'llama3', baseUrl: c.baseUrl || 'http://localhost:11434/v1',
           customSystemPrompt: (data.jawad_systemPrompt as string) || '',
         });
+        // Fetch Ollama models if provider is ollama
+        if (provider === 'ollama') {
+          fetchOllamaModels(c.baseUrl || 'http://localhost:11434/v1');
+        }
+      } else {
+        // First load, fetch Ollama models
+        fetchOllamaModels('http://localhost:11434/v1');
       }
     } catch { /* defaults */ }
+  };
+
+  const fetchOllamaModels = (baseUrl: string) => {
+    setFetchingModels(true);
+    sendToBackground({
+      type: 'FETCH_OLLAMA_MODELS',
+      payload: { baseUrl },
+    });
+    // Timeout
+    setTimeout(() => setFetchingModels(false), 10000);
   };
 
   const handleProvider = (provider: string) => {
@@ -108,7 +135,22 @@ export function Settings({ llm }: SettingsProps) {
       openrouter: { baseUrl: 'https://openrouter.ai/api/v1', model: 'openai/gpt-4o-mini' },
       openai:     { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
     };
-    setS({ ...s, provider, baseUrl: d[provider]?.baseUrl || s.baseUrl, model: d[provider]?.model || s.model });
+    const newState = { ...s, provider, baseUrl: d[provider]?.baseUrl || s.baseUrl, model: d[provider]?.model || s.model };
+    setS(newState);
+
+    // Auto-switch voice to Browser for Ollama (Whisper doesn't work with Ollama)
+    if (provider === 'ollama' && voiceMode === 'whisper') {
+      handleVoiceMode('browser');
+    }
+
+    // Fetch Ollama models when switching to Ollama
+    if (provider === 'ollama') {
+      fetchOllamaModels(d[provider].baseUrl);
+    }
+
+    // Clear test result when switching providers
+    setTestResult(null);
+    setTestError(null);
   };
 
   const handleSave = async () => {
@@ -141,9 +183,15 @@ export function Settings({ llm }: SettingsProps) {
         return false;
       });
     }, timeoutMs);
-  }, [s.baseUrl, s.model, s.apiKey]);
+  }, [s.baseUrl, s.model, s.apiKey, s.provider]);
 
-  const models = DEFAULT_MODELS[s.provider] || [];
+  // Build model list: for Ollama, prefer fetched models; fallback to defaults
+  const models = s.provider === 'ollama' && ollamaModels.length > 0
+    ? ollamaModels
+    : (DEFAULT_MODELS[s.provider] || []);
+
+  // Make sure current model is in the list
+  const modelOptions = models.includes(s.model) ? models : [s.model, ...models];
 
   const providers = [
     { id: 'ollama',     emoji: '🦙', name: 'Ollama',     sub: 'Local' },
@@ -211,15 +259,29 @@ export function Settings({ llm }: SettingsProps) {
 
       {/* ── Model ── */}
       <section>
-        <Label icon={<Cpu size={11} />} text="Model" />
-        {models.length > 0 && (
+        <div className="flex items-center justify-between">
+          <Label icon={<Cpu size={11} />} text="Model" />
+          {s.provider === 'ollama' && (
+            <button
+              onClick={() => fetchOllamaModels(s.baseUrl)}
+              disabled={fetchingModels}
+              className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider transition-colors"
+              style={{ color: fetchingModels ? '#3d4d65' : '#e8792b' }}
+              title="Refresh models from Ollama"
+            >
+              <RefreshCw size={9} className={fetchingModels ? 'animate-spin' : ''} />
+              {fetchingModels ? 'Loading…' : 'Refresh'}
+            </button>
+          )}
+        </div>
+        {modelOptions.length > 0 && (
           <select
             value={s.model}
             onChange={(e) => setS({ ...s, model: e.target.value })}
             className="mt-2"
             style={SELECT}
           >
-            {models.map((m) => <option key={m} value={m} style={{ backgroundColor: '#172033', color: '#dde4ed' }}>{m}</option>)}
+            {modelOptions.map((m) => <option key={m} value={m} style={{ backgroundColor: '#172033', color: '#dde4ed' }}>{m}</option>)}
           </select>
         )}
         <input
@@ -230,6 +292,16 @@ export function Settings({ llm }: SettingsProps) {
           className="mt-1.5"
           style={FIELD}
         />
+        {s.provider === 'ollama' && ollamaModels.length > 0 && (
+          <p className="text-[9px] mt-1" style={{ color: '#4ade80' }}>
+            ✓ {ollamaModels.length} model{ollamaModels.length > 1 ? 's' : ''} found on your machine
+          </p>
+        )}
+        {s.provider === 'ollama' && ollamaModels.length === 0 && !fetchingModels && (
+          <p className="text-[9px] mt-1" style={{ color: '#f0a050' }}>
+            Could not fetch models. Is Ollama running? Using defaults.
+          </p>
+        )}
       </section>
 
       {/* ── Voice Mode ── */}
@@ -243,11 +315,14 @@ export function Settings({ llm }: SettingsProps) {
               background: voiceMode === 'whisper' ? '#1d2840' : '#151e30',
               border: voiceMode === 'whisper' ? '1.5px solid #e8792b' : '1.5px solid #253045',
               color: voiceMode === 'whisper' ? '#eef2f7' : '#5d6f85',
+              opacity: s.provider === 'ollama' ? 0.4 : 1,
             }}
+            disabled={s.provider === 'ollama'}
+            title={s.provider === 'ollama' ? 'Whisper not available with Ollama' : ''}
           >
             <Zap size={14} style={{ color: voiceMode === 'whisper' ? '#e8792b' : '#5d6f85' }} />
             <span className="text-[11px] font-bold">Whisper</span>
-            <span className="text-[8px]" style={{ color: '#3d4d65' }}>OpenAI/OpenRouter · Best accuracy</span>
+            <span className="text-[8px]" style={{ color: '#3d4d65' }}>OpenAI/OpenRouter</span>
           </button>
           <button
             onClick={() => handleVoiceMode('browser')}
@@ -264,7 +339,11 @@ export function Settings({ llm }: SettingsProps) {
           </button>
         </div>
         <p className="text-[10px] mt-1.5" style={{ color: '#3d4d65' }}>
-          {voiceMode === 'whisper' ? 'Uses your LLM provider for transcription. Requires OpenAI or OpenRouter.' : 'Uses browser speech. Works on HTTPS pages. No API key needed.'}
+          {s.provider === 'ollama'
+            ? 'Ollama doesn\'t support Whisper. Browser Speech is selected (free, works on HTTPS).'
+            : voiceMode === 'whisper'
+              ? 'Uses your LLM provider for transcription. Requires OpenAI or OpenRouter.'
+              : 'Uses browser speech recognition. Works on HTTPS pages. No API key needed.'}
         </p>
       </section>
 
@@ -305,6 +384,16 @@ export function Settings({ llm }: SettingsProps) {
           <div className="flex items-start gap-2">
             <AlertCircle size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#f87171' }} />
             <span className="leading-relaxed">{testError}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Test success detail ── */}
+      {testResult === 'success' && (
+        <div className="px-3 py-2.5 rounded-xl text-[11px] fade-up" style={{ background: 'rgba(74,222,128,0.08)', border: '1px solid rgba(74,222,128,0.2)', color: '#4ade80' }}>
+          <div className="flex items-center gap-2">
+            <CheckCircle size={12} className="flex-shrink-0" />
+            <span>Connected! {s.provider === 'ollama' ? `Model "${s.model}" is responding.` : `${s.provider} is working.`}</span>
           </div>
         </div>
       )}

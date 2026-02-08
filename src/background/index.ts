@@ -41,6 +41,13 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
         return;
       }
 
+      // Fetch Ollama models list
+      if (message.type === 'FETCH_OLLAMA_MODELS') {
+        const payload = message.payload as { baseUrl: string };
+        fetchOllamaModels(payload.baseUrl, port);
+        return;
+      }
+
       handleMessage(message, port);
     });
 
@@ -194,6 +201,29 @@ async function relayVoiceCommand(type: string): Promise<void> {
         },
       });
     }
+  }
+}
+
+/**
+ * Fetch the list of models installed on the local Ollama instance.
+ * Uses the /api/tags endpoint (Ollama native API, not OpenAI-compat).
+ */
+async function fetchOllamaModels(baseUrl: string, port: browser.Port): Promise<void> {
+  try {
+    // baseUrl is like "http://localhost:11434/v1" — strip /v1 to get the Ollama root
+    const ollamaRoot = baseUrl.replace(/\/v1\/?$/, '');
+    const response = await fetch(`${ollamaRoot}/api/tags`);
+    if (!response.ok) {
+      port.postMessage({ type: 'OLLAMA_MODELS', payload: { models: [] } });
+      return;
+    }
+    const data = await response.json() as { models?: Array<{ name: string }> };
+    const models = (data.models || []).map((m) => m.name);
+    console.log(`[Jawad] Ollama models found: ${models.join(', ')}`);
+    port.postMessage({ type: 'OLLAMA_MODELS', payload: { models } });
+  } catch (err) {
+    console.warn('[Jawad] Failed to fetch Ollama models:', err);
+    port.postMessage({ type: 'OLLAMA_MODELS', payload: { models: [] } });
   }
 }
 
