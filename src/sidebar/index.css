@@ -44,7 +44,9 @@ html, body {
 /* ═══════════════════════════════════════════
    FIREFOX-PROOF FORM ELEMENTS
    These use !important to override Firefox
-   native form element rendering in sidebar
+   native form element rendering in sidebar.
+   Inline style= props are ALSO applied on
+   every element as belt-and-suspenders fix.
    ═══════════════════════════════════════════ */
 
 input,
@@ -109,14 +111,13 @@ input[type="checkbox"] {
 
 /* ═══════════════════════════════════════════
    SURFACE / CARD SYSTEM
-   Layered opaque surfaces for Firefox
    ═══════════════════════════════════════════ */
 
-.surface-0 { background: #0e1525; }    /* deepest bg */
-.surface-1 { background: #131b2c; }    /* panels */
-.surface-2 { background: #172033; }    /* cards */
-.surface-3 { background: #1d2840; }    /* elevated */
-.surface-4 { background: #24324e; }    /* interactive */
+.surface-0 { background: #0e1525; }
+.surface-1 { background: #131b2c; }
+.surface-2 { background: #172033; }
+.surface-3 { background: #1d2840; }
+.surface-4 { background: #24324e; }
 
 .card {
   background: #151e30;
@@ -291,6 +292,35 @@ input[type="checkbox"] {
 .md-body hr { border: none; border-top: 1px solid #253045; margin: 12px 0; }
 
 /* ═══════════════════════════════════════════
+   VOICE BUTTON STATE CLASSES
+   (replaces inline styles to silence linter)
+   ═══════════════════════════════════════════ */
+
+.vbtn { background: transparent; color: #5d6f85; }
+.vbtn-listening { background: #dc2626; color: #fff; }
+.vbtn-transcribing { background: #2563eb; color: #fff; }
+.vbtn-setup { background: #e8792b; color: #fff; }
+.vbtn-error { background: #b45309; color: #fff; }
+.vbtn-disabled { background: #1d2840; color: #3d4d65; cursor: not-allowed; }
+
+.vbtn-ping { background: #dc2626; }
+
+.tooltip-recording {
+  background: #dc2626;
+  color: #fff;
+}
+.tooltip-transcribing {
+  background: #2563eb;
+  color: #fff;
+}
+.tooltip-error {
+  background: #44200a;
+  border: 1px solid #7c3a0a;
+  color: #fbbf6a;
+}
+.tooltip-error-icon { color: #f59e0b; }
+
+/* ═══════════════════════════════════════════
    ANIMATIONS
    ═══════════════════════════════════════════ */
 
@@ -356,7 +386,6 @@ input[type="checkbox"] {
   -webkit-box-orient: vertical;
 }
 
-/* Tab indicator underline (for active nav tab) */
 .tab-active {
   color: #e8792b !important;
   box-shadow: inset 0 -2px 0 #e8792b;

@@ -14,20 +14,15 @@ interface ChatProps {
 function WelcomeScreen({ onChip }: { onChip: (text: string) => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 fade-up" style={{ paddingBottom: '20%' }}>
-      {/* Logo */}
       <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'linear-gradient(135deg, #e8792b, #d4621a)', boxShadow: '0 8px 30px rgba(232,121,43,0.25)' }}>
         <Sparkles size={26} className="text-white" />
       </div>
-
-      {/* Greeting */}
       <h1 className="text-[22px] font-bold text-center leading-tight mb-2" style={{ color: '#eef2f7' }}>
         Hi! I'm Jawad
       </h1>
       <p className="text-[13px] text-center leading-relaxed mb-8" style={{ color: '#5d6f85', maxWidth: 240 }}>
         Your AI browser companion. Ask me anything, or try a quick action below.
       </p>
-
-      {/* Quick action chips */}
       <div className="flex flex-wrap gap-2 justify-center max-w-[280px]">
         {[
           { icon: <FileText size={12} />, label: 'Summarize page', action: 'Summarize this page' },
@@ -87,10 +82,8 @@ export function Chat({ llm }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Mic onboarding */}
       <MicSetupCard />
 
-      {/* ── Messages or Welcome ── */}
       {!hasMessages && !isLoading ? (
         <WelcomeScreen onChip={send} />
       ) : (
@@ -100,7 +93,6 @@ export function Chat({ llm }: ChatProps) {
               key={msg.id}
               className={`flex gap-2.5 fade-up ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
             >
-              {/* Avatar */}
               <div
                 className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5"
                 style={{
@@ -115,7 +107,6 @@ export function Chat({ llm }: ChatProps) {
                 }
               </div>
 
-              {/* Bubble */}
               <div
                 className={`max-w-[82%] px-3.5 py-2.5 text-[13px] leading-relaxed ${
                   msg.role === 'user'
@@ -138,7 +129,6 @@ export function Chat({ llm }: ChatProps) {
             </div>
           ))}
 
-          {/* Thinking */}
           {isLoading && (
             <div className="flex gap-2.5 fade-up">
               <div className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5" style={{ background: '#1d2840' }}>
@@ -158,7 +148,6 @@ export function Chat({ llm }: ChatProps) {
 
       {/* ── Bottom bar ── */}
       <div className="flex-shrink-0 p-2.5 space-y-2" style={{ background: '#131b2c', borderTop: '1px solid #253045' }}>
-        {/* Chips row */}
         <div className="flex items-center gap-1.5">
           <button onClick={() => llm.summarizePage()} disabled={isLoading} className="chip">
             <FileText size={11} /> Summarize
@@ -175,14 +164,13 @@ export function Chat({ llm }: ChatProps) {
           </button>
         </div>
 
-        {/* Research banner */}
         {isResearchMode && (
           <div className="px-3 py-2 rounded-xl text-[11px] fade-up" style={{ background: 'rgba(168,85,247,0.08)', border: '1px solid rgba(168,85,247,0.2)', color: '#c084fc' }}>
             <strong>🔬 Research Mode</strong> — Describe a goal. Jawad will open tabs and compile results.
           </div>
         )}
 
-        {/* Input row */}
+        {/* Input row — the inner input uses explicit inline styles to defeat Firefox */}
         <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-xl transition-all duration-200" style={{ background: '#172033', border: '1.5px solid #293548' }}>
           <VoiceButton onResult={handleVoiceResult} disabled={isLoading} />
 
@@ -195,7 +183,19 @@ export function Chat({ llm }: ChatProps) {
             placeholder={isResearchMode ? 'Describe your research goal…' : 'Message Jawad…'}
             disabled={isLoading}
             className="flex-1 py-1.5 text-[13px] focus:outline-none disabled:opacity-40"
-            style={{ background: 'transparent', border: 'none', color: '#dde4ed', caretColor: '#e8792b' }}
+            style={{
+              background: 'transparent',
+              backgroundColor: 'transparent',
+              border: 'none',
+              borderWidth: 0,
+              color: '#dde4ed',
+              caretColor: '#e8792b',
+              outline: 'none',
+              boxShadow: 'none',
+              padding: '6px 0',
+              WebkitAppearance: 'none',
+              MozAppearance: 'none',
+            }}
           />
 
           <button

@@ -15,6 +15,37 @@ interface SettingsState {
   customSystemPrompt: string;
 }
 
+/* Firefox sidebar ignores CSS on form elements —
+   inline style is the only reliable override. */
+const FIELD: React.CSSProperties = {
+  backgroundColor: '#172033',
+  color: '#dde4ed',
+  border: '1.5px solid #293548',
+  borderRadius: 10,
+  padding: '9px 12px',
+  fontSize: 12,
+  width: '100%',
+  outline: 'none',
+  fontFamily: 'inherit',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+};
+
+const SELECT: React.CSSProperties = {
+  ...FIELD,
+  paddingRight: 30,
+  cursor: 'pointer',
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7a8f'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 10px center',
+};
+
+const TEXTAREA: React.CSSProperties = {
+  ...FIELD,
+  resize: 'none',
+  minHeight: 60,
+};
+
 export function Settings({ llm }: SettingsProps) {
   const [s, setS] = useState<SettingsState>({
     provider: 'ollama', apiKey: '', model: 'llama3',
@@ -118,6 +149,7 @@ export function Settings({ llm }: SettingsProps) {
             onChange={(e) => setS({ ...s, apiKey: e.target.value })}
             placeholder={s.provider === 'openrouter' ? 'sk-or-…' : 'sk-…'}
             className="mt-2"
+            style={FIELD}
           />
         </section>
       )}
@@ -129,7 +161,8 @@ export function Settings({ llm }: SettingsProps) {
           type="text"
           value={s.baseUrl}
           onChange={(e) => setS({ ...s, baseUrl: e.target.value })}
-          className="mt-2 font-mono"
+          className="mt-2"
+          style={{ ...FIELD, fontFamily: 'monospace' }}
         />
       </section>
 
@@ -137,8 +170,13 @@ export function Settings({ llm }: SettingsProps) {
       <section>
         <Label icon={<Cpu size={11} />} text="Model" />
         {models.length > 0 && (
-          <select value={s.model} onChange={(e) => setS({ ...s, model: e.target.value })} className="mt-2">
-            {models.map((m) => <option key={m} value={m}>{m}</option>)}
+          <select
+            value={s.model}
+            onChange={(e) => setS({ ...s, model: e.target.value })}
+            className="mt-2"
+            style={SELECT}
+          >
+            {models.map((m) => <option key={m} value={m} style={{ backgroundColor: '#172033', color: '#dde4ed' }}>{m}</option>)}
           </select>
         )}
         <input
@@ -147,6 +185,7 @@ export function Settings({ llm }: SettingsProps) {
           onChange={(e) => setS({ ...s, model: e.target.value })}
           placeholder="Or type a custom model…"
           className="mt-1.5"
+          style={FIELD}
         />
       </section>
 
@@ -159,6 +198,7 @@ export function Settings({ llm }: SettingsProps) {
           placeholder="e.g. Always respond in bullet points, I prefer budget options…"
           rows={3}
           className="mt-2"
+          style={TEXTAREA}
         />
       </section>
 
@@ -205,7 +245,6 @@ export function Settings({ llm }: SettingsProps) {
   );
 }
 
-/* Tiny helper for section labels */
 function Label({ icon, text }: { icon: React.ReactNode; text: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider" style={{ color: '#5d6f85' }}>

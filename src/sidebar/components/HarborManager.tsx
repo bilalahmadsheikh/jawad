@@ -4,6 +4,36 @@ import { TOOLS } from '../../lib/mcp-tool-registry';
 import { PERMISSION_COLORS } from '../../lib/constants';
 import { Shield, Trash2, Plus, RotateCcw, Globe, Wrench, Loader2 } from 'lucide-react';
 
+/* Firefox sidebar ignores CSS on form elements —
+   inline style is the only reliable override. */
+const FIELD: React.CSSProperties = {
+  backgroundColor: '#172033',
+  color: '#dde4ed',
+  border: '1.5px solid #293548',
+  borderRadius: 10,
+  padding: '9px 12px',
+  fontSize: 12,
+  outline: 'none',
+  fontFamily: 'inherit',
+  WebkitAppearance: 'none',
+  MozAppearance: 'none',
+};
+
+const SELECT: React.CSSProperties = {
+  ...FIELD,
+  width: 'auto',
+  paddingRight: 30,
+  cursor: 'pointer',
+  backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%236b7a8f'%3E%3Cpath d='M6 8L1 3h10z'/%3E%3C/svg%3E\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 10px center',
+};
+
+const OPTION: React.CSSProperties = {
+  backgroundColor: '#172033',
+  color: '#dde4ed',
+};
+
 export function HarborManager() {
   const { policy, isLoading, savePolicy, removeSiteTrust, updateDefaults, resetPolicy } = useHarbor();
   const [newSite, setNewSite] = useState('');
@@ -65,9 +95,19 @@ export function HarborManager() {
 
             {/* Add row */}
             <div className="flex gap-2">
-              <input value={newSite} onChange={(e) => setNewSite(e.target.value)} placeholder="example.com" className="flex-1" />
-              <select value={newTrust} onChange={(e) => setNewTrust(e.target.value)} style={{ width: 'auto' }}>
-                {levels.map((l) => <option key={l} value={l}>{l}</option>)}
+              <input
+                value={newSite}
+                onChange={(e) => setNewSite(e.target.value)}
+                placeholder="example.com"
+                className="flex-1"
+                style={{ ...FIELD, flex: 1 }}
+              />
+              <select
+                value={newTrust}
+                onChange={(e) => setNewTrust(e.target.value)}
+                style={SELECT}
+              >
+                {levels.map((l) => <option key={l} value={l} style={OPTION}>{l}</option>)}
               </select>
               <button onClick={addSite} className="btn-accent p-2 flex items-center justify-center"><Plus size={14} /></button>
             </div>
@@ -122,11 +162,11 @@ export function HarborManager() {
                   <select
                     value={policy.defaults[item.key]}
                     onChange={(e) => updateDefaults({ [item.key]: e.target.value })}
-                    style={{ width: 'auto', padding: '5px 28px 5px 10px', fontSize: 11 }}
+                    style={{ ...SELECT, fontSize: 11, padding: '5px 28px 5px 10px' }}
                   >
-                    <option value="auto-approve">Auto-Approve</option>
-                    <option value="ask">Ask</option>
-                    <option value="deny">Deny</option>
+                    <option value="auto-approve" style={OPTION}>Auto-Approve</option>
+                    <option value="ask" style={OPTION}>Ask</option>
+                    <option value="deny" style={OPTION}>Deny</option>
                   </select>
                 </div>
               ))}
@@ -156,7 +196,6 @@ export function HarborManager() {
                   <div key={tool.name} className="card px-3 py-3 transition-opacity duration-200" style={{ opacity: on ? 1 : 0.35 }}>
                     <div className="flex items-center gap-2.5">
                       <label className="flex items-center gap-2.5 flex-1 cursor-pointer">
-                        {/* Toggle */}
                         <div className="relative flex-shrink-0">
                           <input
                             type="checkbox"
