@@ -87,17 +87,22 @@ export async function chatCompletion(
     body: JSON.stringify(body),
   });
 
-  // Ollama fallback: some models reject the tools param entirely.
-  // Retry without tools so the agent-manager XML parser can handle it.
-  if (!response.ok && config.provider === 'ollama' && body.tools) {
+  // Universal fallback: if ANY provider rejects the tools param,
+  // retry without tools so the agent-manager XML parser can handle it.
+  // This covers Ollama, OpenRouter with tool-unsupported models,
+  // and any other provider that chokes on the tools parameter.
+  if (!response.ok && body.tools) {
     const errText = await response.text();
-    if (
-      response.status === 400 ||
-      response.status === 422 ||
-      /tool|function/i.test(errText)
-    ) {
+    const status = response.status;
+    const looksToolRelated =
+      status === 400 ||
+      status === 422 ||
+      /tool|function|unsupported|not support|invalid.*param/i.test(errText);
+
+    if (looksToolRelated) {
       console.warn(
-        '[any-llm-router] Ollama rejected tools param, retrying without tools'
+        `[any-llm-router] Provider "${config.provider}" rejected tools param (${status}), retrying without tools. ` +
+          `Error: ${errText.substring(0, 120)}`
       );
       delete body.tools;
       delete body.tool_choice;
@@ -108,7 +113,7 @@ export async function chatCompletion(
       });
     } else {
       throw new Error(
-        `LLM API error (${response.status}): ${errText.substring(0, 200)}`
+        `LLM API error (${status}): ${errText.substring(0, 200)}`
       );
     }
   }
