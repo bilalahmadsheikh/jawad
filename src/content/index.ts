@@ -34,6 +34,11 @@ browser.runtime.onMessage.addListener(
       case 'SCROLL_PAGE':
         return scrollPage(message.payload!.direction as 'up' | 'down');
 
+      // Microphone permission check — returns current state
+      case 'CHECK_MIC_PERMISSION': {
+        return checkMicPermission();
+      }
+
       // Voice input — uses MediaRecorder for reliable audio capture
       case 'START_VOICE_INPUT': {
         startVoiceCapture();
@@ -50,6 +55,48 @@ browser.runtime.onMessage.addListener(
     }
   }
 );
+
+// ---------- Microphone permission ----------
+
+/**
+ * Check microphone permission state and page capabilities.
+ * Returns a status string the sidebar can use to show the right UI.
+ */
+async function checkMicPermission(): Promise<{ status: string; details?: string }> {
+  // 1. Check secure context (getUserMedia requires HTTPS, localhost, or file://)
+  if (!window.isSecureContext) {
+    return {
+      status: 'insecure',
+      details: 'This page is not HTTPS. Navigate to a secure (HTTPS) site to use voice input.',
+    };
+  }
+
+  // 2. Check if mediaDevices API exists
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    return {
+      status: 'unavailable',
+      details: 'Microphone API not available on this page.',
+    };
+  }
+
+  // 3. Check MediaRecorder
+  if (typeof MediaRecorder === 'undefined') {
+    return {
+      status: 'unavailable',
+      details: 'MediaRecorder not available on this page.',
+    };
+  }
+
+  // 4. Query permission state via Permissions API
+  try {
+    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+    // result.state: 'granted' | 'denied' | 'prompt'
+    return { status: result.state };
+  } catch {
+    // Permissions API not available — we'll need to try getUserMedia to find out
+    return { status: 'prompt' };
+  }
+}
 
 // ---------- Voice capture (MediaRecorder) ----------
 
@@ -88,11 +135,16 @@ function getSupportedMimeType(): string {
 
 /**
  * Start recording audio from the microphone using MediaRecorder.
- * When stopped, the recorded audio is sent to the background script
- * for transcription via the user's configured LLM provider (Whisper API).
+ *
+ * Pre-flight checks:
+ *   1. Secure context (HTTPS) required
+ *   2. navigator.mediaDevices must exist
+ *   3. MediaRecorder must exist
+ *   4. Microphone permission — if 'denied', show instructions;
+ *      if 'prompt', getUserMedia will trigger the browser permission dialog
  */
 function startVoiceCapture(): void {
-  // Stop any existing recording
+  // Stop any existing recording first
   if (mediaRecorder && mediaRecorder.state !== 'inactive') {
     mediaRecorder.stop();
   }
@@ -101,7 +153,27 @@ function startVoiceCapture(): void {
     mediaStream = null;
   }
 
-  // Check if MediaRecorder is available
+  // Pre-flight 1: Secure context
+  if (!window.isSecureContext) {
+    browser.runtime.sendMessage({
+      type: 'VOICE_ERROR',
+      payload: {
+        error: 'INSECURE_CONTEXT: Voice requires a secure (HTTPS) page. Navigate to an HTTPS site and try again.',
+      },
+    });
+    return;
+  }
+
+  // Pre-flight 2: mediaDevices API
+  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+    browser.runtime.sendMessage({
+      type: 'VOICE_ERROR',
+      payload: { error: 'Microphone API not available on this page. Try an HTTPS site.' },
+    });
+    return;
+  }
+
+  // Pre-flight 3: MediaRecorder
   if (typeof MediaRecorder === 'undefined') {
     browser.runtime.sendMessage({
       type: 'VOICE_ERROR',
@@ -110,86 +182,124 @@ function startVoiceCapture(): void {
     return;
   }
 
-  navigator.mediaDevices
-    .getUserMedia({ audio: true })
-    .then((stream) => {
-      mediaStream = stream;
-      audioChunks = [];
+  // Pre-flight 4: Check permission state before calling getUserMedia
+  const permCheck = navigator.permissions
+    ? navigator.permissions.query({ name: 'microphone' as PermissionName }).catch(() => null)
+    : Promise.resolve(null);
 
-      const mimeType = getSupportedMimeType();
-      const recorderOptions: MediaRecorderOptions = {};
-      if (mimeType) recorderOptions.mimeType = mimeType;
-
-      mediaRecorder = new MediaRecorder(stream, recorderOptions);
-
-      mediaRecorder.ondataavailable = (event: BlobEvent) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        // Release the microphone
-        mediaStream?.getTracks().forEach((t) => t.stop());
-        mediaStream = null;
-
-        if (audioChunks.length === 0) {
-          browser.runtime.sendMessage({
-            type: 'VOICE_ERROR',
-            payload: { error: 'No audio was captured. Please try again.' },
-          });
-          return;
-        }
-
-        const actualMime = mimeType || 'audio/webm';
-        const audioBlob = new Blob(audioChunks, { type: actualMime });
-
-        // Notify sidebar we're now processing the audio
-        browser.runtime.sendMessage({ type: 'VOICE_TRANSCRIBING' });
-
-        try {
-          const base64 = await blobToBase64(audioBlob);
-          // Send audio to background for Whisper transcription
-          browser.runtime.sendMessage({
-            type: 'VOICE_AUDIO',
-            payload: {
-              audio: base64,
-              mimeType: actualMime.split(';')[0], // e.g. "audio/webm"
-            },
-          });
-        } catch (err) {
-          browser.runtime.sendMessage({
-            type: 'VOICE_ERROR',
-            payload: {
-              error: `Failed to process audio: ${err instanceof Error ? err.message : String(err)}`,
-            },
-          });
-        }
-      };
-
-      mediaRecorder.onerror = () => {
-        browser.runtime.sendMessage({
-          type: 'VOICE_ERROR',
-          payload: { error: 'Recording error occurred.' },
-        });
-      };
-
-      // Start recording — collect data in chunks for robustness
-      mediaRecorder.start(250);
-
-      // Notify that we are now recording
-      browser.runtime.sendMessage({ type: 'VOICE_STARTED' });
-    })
-    .catch((err: Error) => {
+  permCheck.then((permResult) => {
+    if (permResult && permResult.state === 'denied') {
       browser.runtime.sendMessage({
         type: 'VOICE_ERROR',
         payload: {
-          error: err.name === 'NotAllowedError'
-            ? 'Microphone permission denied. Allow mic access for this site and try again.'
-            : `Microphone error: ${err.message}`,
+          error:
+            'MIC_DENIED: Microphone permission was previously denied for this site. ' +
+            'Click the lock/site icon in the address bar, find Microphone, change it to Allow, then reload the page.',
         },
       });
+      return;
+    }
+
+    // Permission is 'granted' or 'prompt' — call getUserMedia.
+    // If 'prompt', the browser will show the "Allow microphone?" dialog now.
+    browser.runtime.sendMessage({
+      type: 'VOICE_REQUESTING_MIC',
+      payload: {
+        permissionState: permResult ? permResult.state : 'unknown',
+      },
     });
+
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((stream) => {
+        mediaStream = stream;
+        audioChunks = [];
+
+        const mimeType = getSupportedMimeType();
+        const recorderOptions: MediaRecorderOptions = {};
+        if (mimeType) recorderOptions.mimeType = mimeType;
+
+        mediaRecorder = new MediaRecorder(stream, recorderOptions);
+
+        mediaRecorder.ondataavailable = (event: BlobEvent) => {
+          if (event.data.size > 0) {
+            audioChunks.push(event.data);
+          }
+        };
+
+        mediaRecorder.onstop = async () => {
+          // Release the microphone
+          mediaStream?.getTracks().forEach((t) => t.stop());
+          mediaStream = null;
+
+          if (audioChunks.length === 0) {
+            browser.runtime.sendMessage({
+              type: 'VOICE_ERROR',
+              payload: { error: 'No audio was captured. Please try again.' },
+            });
+            return;
+          }
+
+          const actualMime = mimeType || 'audio/webm';
+          const audioBlob = new Blob(audioChunks, { type: actualMime });
+
+          // Notify sidebar we're now processing the audio
+          browser.runtime.sendMessage({ type: 'VOICE_TRANSCRIBING' });
+
+          try {
+            const base64 = await blobToBase64(audioBlob);
+            // Send audio to background for Whisper transcription
+            browser.runtime.sendMessage({
+              type: 'VOICE_AUDIO',
+              payload: {
+                audio: base64,
+                mimeType: actualMime.split(';')[0], // e.g. "audio/webm"
+              },
+            });
+          } catch (err) {
+            browser.runtime.sendMessage({
+              type: 'VOICE_ERROR',
+              payload: {
+                error: `Failed to process audio: ${err instanceof Error ? err.message : String(err)}`,
+              },
+            });
+          }
+        };
+
+        mediaRecorder.onerror = () => {
+          browser.runtime.sendMessage({
+            type: 'VOICE_ERROR',
+            payload: { error: 'Recording error occurred.' },
+          });
+        };
+
+        // Start recording — collect data in chunks for robustness
+        mediaRecorder.start(250);
+
+        // Notify that we are now recording (permission was granted!)
+        browser.runtime.sendMessage({ type: 'VOICE_STARTED' });
+      })
+      .catch((err: Error) => {
+        let errorMsg: string;
+
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          errorMsg =
+            'MIC_DENIED: Microphone access was denied. When Firefox shows the microphone prompt, click "Allow". ' +
+            'If you dismissed it, click the lock icon in the address bar to change the permission.';
+        } else if (err.name === 'NotFoundError') {
+          errorMsg = 'No microphone found. Please connect a microphone and try again.';
+        } else if (err.name === 'NotReadableError' || err.name === 'AbortError') {
+          errorMsg = 'Microphone is in use by another application. Close other apps using the mic and try again.';
+        } else {
+          errorMsg = `Microphone error (${err.name}): ${err.message}`;
+        }
+
+        browser.runtime.sendMessage({
+          type: 'VOICE_ERROR',
+          payload: { error: errorMsg },
+        });
+      });
+  });
 }
 
 /**
