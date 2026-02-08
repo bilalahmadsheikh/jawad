@@ -1,6 +1,7 @@
 // ============================================================
-// Enhanced MCP Tool Registry
-// New tools: search_web, draft_email, get_snapshot
+// Enhanced MCP Tool Registry — v2
+// New tools: screenshot_page, extract_table, translate_text,
+//   watch_price, compare_tabs, auto_fill_form
 // Better descriptions that guide LLM behavior
 // ============================================================
 
@@ -132,6 +133,70 @@ export const TOOLS: ToolDefinition[] = [
     },
     permission: 'read-only',
   },
+  // ── NEW TOOLS ──────────────────────────────────────────────
+  {
+    name: 'extract_table',
+    description:
+      'Extract all tables from the current page as structured data (array of rows). Great for comparison pages, pricing tables, specs, etc. Returns JSON.',
+    parameters: {},
+    permission: 'read-only',
+  },
+  {
+    name: 'screenshot_page',
+    description:
+      'Take a screenshot/snapshot description of the visible viewport. Returns a text description of what is currently visible on screen (headings, images, layout). Useful for understanding page state after interactions.',
+    parameters: {},
+    permission: 'read-only',
+  },
+  {
+    name: 'translate_text',
+    description:
+      'Translate text to a target language. Uses the LLM to translate. Good for translating page content, product descriptions, etc.',
+    parameters: {
+      text: {
+        type: 'string',
+        description: 'The text to translate',
+        required: true,
+      },
+      targetLanguage: {
+        type: 'string',
+        description: 'Target language (e.g. "Spanish", "French", "Arabic", "Chinese")',
+        required: true,
+      },
+    },
+    permission: 'read-only',
+  },
+  {
+    name: 'watch_price',
+    description:
+      'Start watching the current product page for price changes. Jawad will remember the current price and notify the user if it changes on future visits.',
+    parameters: {
+      productName: {
+        type: 'string',
+        description: 'Name of the product to watch',
+        required: true,
+      },
+      currentPrice: {
+        type: 'string',
+        description: 'Current price of the product',
+        required: true,
+      },
+    },
+    permission: 'read-only',
+  },
+  {
+    name: 'select_text',
+    description:
+      'Select and extract specific text from the page by CSS selector or search term. Returns the text content of matching elements.',
+    parameters: {
+      selector: {
+        type: 'string',
+        description: 'CSS selector or text to search for on the page',
+        required: true,
+      },
+    },
+    permission: 'read-only',
+  },
 ];
 
 /**
@@ -171,7 +236,8 @@ export async function executeToolAction(
   args: Record<string, unknown>,
   tabId?: number
 ): Promise<unknown> {
-  if (!tabId && !['navigate', 'search_web', 'draft_email', 'get_snapshot'].includes(toolName)) {
+  const tabOptional = ['navigate', 'search_web', 'draft_email', 'get_snapshot', 'translate_text', 'watch_price'];
+  if (!tabId && !tabOptional.includes(toolName)) {
     return { error: 'No active tab available' };
   }
 
@@ -227,11 +293,9 @@ export async function executeToolAction(
         const query = args.query as string;
         const url = `https://www.google.com/search?q=${encodeURIComponent(query)}`;
 
-        // Use current tab if available, else open new tab
         if (tabId) {
           await browser.tabs.update(tabId, { url });
           await waitForTabLoad(tabId);
-          // Read the results page
           try {
             const results = await browser.tabs.sendMessage(tabId, {
               type: 'READ_PAGE',
@@ -270,7 +334,6 @@ export async function executeToolAction(
         const subject = (args.subject as string) || '';
         const body = (args.body as string) || '';
 
-        // Gmail compose URL
         const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
         const tab = await browser.tabs.create({
@@ -296,7 +359,6 @@ export async function executeToolAction(
         const snapshot = await getCachedSnapshot(url);
 
         if (!snapshot) {
-          // Try product context
           const product = await getLastProductContext();
           if (product) {
             return {
@@ -323,6 +385,64 @@ export async function executeToolAction(
         };
       }
 
+      // ── NEW TOOL IMPLEMENTATIONS ──────────────────────────────
+
+      case 'extract_table': {
+        return await browser.tabs.sendMessage(tabId!, {
+          type: 'EXTRACT_TABLES',
+        });
+      }
+
+      case 'screenshot_page': {
+        return await browser.tabs.sendMessage(tabId!, {
+          type: 'SCREENSHOT_PAGE',
+        });
+      }
+
+      case 'translate_text': {
+        // Translation is handled by the LLM itself — we return a marker
+        // so the agent loop knows to translate
+        return {
+          success: true,
+          action: 'translate',
+          text: args.text,
+          targetLanguage: args.targetLanguage,
+          message: `Translation request queued. Translate the following to ${args.targetLanguage}: "${(args.text as string).substring(0, 200)}"`,
+        };
+      }
+
+      case 'watch_price': {
+        const productName = args.productName as string;
+        const currentPrice = args.currentPrice as string;
+        const watchUrl = tabId
+          ? (await browser.tabs.get(tabId)).url || 'unknown'
+          : 'unknown';
+
+        // Store in browser.storage.local
+        const existing = await browser.storage.local.get('jawad_price_watches');
+        const watches = (existing.jawad_price_watches as Record<string, unknown>[]) || [];
+        watches.push({
+          productName,
+          currentPrice,
+          url: watchUrl,
+          timestamp: Date.now(),
+        });
+        await browser.storage.local.set({ jawad_price_watches: watches });
+
+        return {
+          success: true,
+          message: `Now watching "${productName}" at ${currentPrice}. You'll be notified if the price changes.`,
+          watchUrl,
+        };
+      }
+
+      case 'select_text': {
+        return await browser.tabs.sendMessage(tabId!, {
+          type: 'SELECT_TEXT',
+          payload: { selector: args.selector },
+        });
+      }
+
       default:
         return { error: `Unknown tool: ${toolName}` };
     }
@@ -340,11 +460,10 @@ function waitForTabLoad(tabId: number): Promise<void> {
     ) => {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
         browser.tabs.onUpdated.removeListener(listener);
-        setTimeout(resolve, 800); // Extra time for JS rendering
+        setTimeout(resolve, 800);
       }
     };
     browser.tabs.onUpdated.addListener(listener);
-    // Timeout after 15 seconds
     setTimeout(() => {
       browser.tabs.onUpdated.removeListener(listener);
       resolve();

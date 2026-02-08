@@ -37,6 +37,16 @@ browser.runtime.onMessage.addListener(
       case 'SCROLL_PAGE':
         return scrollPage(message.payload!.direction as 'up' | 'down');
 
+      // ── NEW TOOLS ──
+      case 'EXTRACT_TABLES':
+        return extractTables();
+
+      case 'SCREENSHOT_PAGE':
+        return screenshotPage();
+
+      case 'SELECT_TEXT':
+        return selectText(message.payload!.selector as string);
+
       // Voice input — uses MediaRecorder for reliable audio capture (Whisper path)
       case 'START_VOICE_INPUT': {
         startVoiceCapture();
@@ -384,6 +394,126 @@ function stopSpeechRecognition(): void {
       // Ignore
     }
     speechRecognition = null;
+  }
+}
+
+// ---------- Table extraction ----------
+
+function extractTables(): Promise<unknown> {
+  try {
+    const tables = document.querySelectorAll('table');
+    if (tables.length === 0) {
+      return Promise.resolve({ success: false, error: 'No tables found on this page.' });
+    }
+
+    const extracted: Array<{ headers: string[]; rows: string[][] }> = [];
+
+    for (const table of tables) {
+      const headers: string[] = [];
+      const rows: string[][] = [];
+
+      // Extract headers
+      const ths = table.querySelectorAll('th');
+      ths.forEach((th) => headers.push(th.textContent?.trim() || ''));
+
+      // Extract rows
+      const trs = table.querySelectorAll('tbody tr, tr');
+      for (const tr of trs) {
+        const cells: string[] = [];
+        const tds = tr.querySelectorAll('td');
+        if (tds.length === 0) continue;
+        tds.forEach((td) => cells.push(td.textContent?.trim() || ''));
+        rows.push(cells);
+      }
+
+      if (rows.length > 0) {
+        extracted.push({ headers, rows: rows.slice(0, 50) }); // limit rows
+      }
+    }
+
+    return Promise.resolve({
+      success: true,
+      tableCount: extracted.length,
+      tables: extracted.slice(0, 10), // limit tables
+    });
+  } catch (err) {
+    return Promise.resolve({ success: false, error: `Table extraction failed: ${err}` });
+  }
+}
+
+// ---------- Screenshot (viewport description) ----------
+
+function screenshotPage(): Promise<unknown> {
+  try {
+    const viewport = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      scrollY: Math.round(window.scrollY),
+      totalHeight: document.body.scrollHeight,
+    };
+
+    // Describe what's visible
+    const visibleElements: string[] = [];
+    const allElements = document.querySelectorAll('h1, h2, h3, h4, img[alt], button, a, input, [role="banner"], [role="navigation"]');
+
+    for (const el of allElements) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top >= 0 && rect.top < viewport.height && rect.width > 0 && rect.height > 0) {
+        const tag = el.tagName.toLowerCase();
+        const text = el.textContent?.trim().substring(0, 60) || '';
+        const alt = el.getAttribute('alt')?.trim() || '';
+        if (tag === 'img' && alt) {
+          visibleElements.push(`[Image: ${alt}]`);
+        } else if (text) {
+          visibleElements.push(`<${tag}> ${text}`);
+        }
+      }
+      if (visibleElements.length >= 30) break;
+    }
+
+    return Promise.resolve({
+      success: true,
+      viewport,
+      visibleContent: visibleElements.join('\n'),
+      pageTitle: document.title,
+      url: window.location.href,
+    });
+  } catch (err) {
+    return Promise.resolve({ success: false, error: `Screenshot failed: ${err}` });
+  }
+}
+
+// ---------- Select text ----------
+
+function selectText(selector: string): Promise<unknown> {
+  try {
+    // Try CSS selector first
+    let el = document.querySelector(selector);
+    if (el) {
+      return Promise.resolve({
+        success: true,
+        text: el.textContent?.trim().substring(0, 2000) || '',
+        selector,
+      });
+    }
+
+    // Try searching by text content
+    const allElements = document.querySelectorAll('p, span, div, h1, h2, h3, h4, h5, h6, li, td, th, a, label');
+    const lower = selector.toLowerCase();
+    for (const candidate of allElements) {
+      const text = candidate.textContent?.trim().toLowerCase() || '';
+      if (text.includes(lower)) {
+        return Promise.resolve({
+          success: true,
+          text: candidate.textContent?.trim().substring(0, 2000) || '',
+          matchedIn: candidate.tagName.toLowerCase(),
+        });
+      }
+    }
+
+    return Promise.resolve({ success: false, error: `No element found matching: "${selector}"` });
+  } catch (err) {
+    return Promise.resolve({ success: false, error: `Select text failed: ${err}` });
   }
 }
 
