@@ -496,22 +496,35 @@ async function handleTestConnection(
       port.postMessage({ type: 'TEST_RESULT', payload: { success: true } });
     } else {
       const errText = await response.text().catch(() => '');
+      const status = response.status;
+      let friendlyMsg = `HTTP ${status}: ${errText.substring(0, 150) || response.statusText}`;
+
+      if (status === 401) {
+        friendlyMsg = 'Invalid API key. Double-check your key in Settings.';
+      } else if (status === 403) {
+        friendlyMsg = '403 Forbidden — your API key has no credits, is invalid, or the model is restricted. Check your provider dashboard.';
+      } else if (status === 404) {
+        friendlyMsg = `Model "${model}" not found. Make sure it\'s available on your provider.`;
+      } else if (status === 429) {
+        friendlyMsg = 'Rate limited. Wait a moment and try again.';
+      }
+
       port.postMessage({
         type: 'TEST_RESULT',
-        payload: {
-          success: false,
-          error: `HTTP ${response.status}: ${errText.substring(0, 150) || response.statusText}`,
-        },
+        payload: { success: false, error: friendlyMsg },
       });
     }
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
+    let friendlyMsg = `Connection failed: ${msg}`;
+
+    if (msg.includes('NetworkError') || msg.includes('Failed to fetch') || msg.includes('ECONNREFUSED')) {
+      friendlyMsg = `Cannot reach ${baseUrl}. Is the server running? For Ollama, run: ollama serve`;
+    }
+
     port.postMessage({
       type: 'TEST_RESULT',
-      payload: {
-        success: false,
-        error: `Connection failed: ${msg}`,
-      },
+      payload: { success: false, error: friendlyMsg },
     });
   }
 }

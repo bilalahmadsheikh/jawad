@@ -200,20 +200,46 @@ export async function chatCompletion(
         body: JSON.stringify(body),
       });
     } else {
-      throw new Error(
-        `LLM API error (${status}): ${errText.substring(0, 200)}`
-      );
+      throw new Error(friendlyApiError(status, errText, config));
     }
   }
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `LLM API error (${response.status}): ${errorText.substring(0, 200)}`
-    );
+    throw new Error(friendlyApiError(response.status, errorText, config));
   }
 
   return response.json();
+}
+
+/**
+ * Turn raw HTTP errors into actionable user-facing messages.
+ */
+function friendlyApiError(status: number, body: string, config: LLMConfig): string {
+  const short = body.substring(0, 200);
+
+  if (status === 401) {
+    return `Invalid API key. Double-check your ${config.provider} key in Settings.`;
+  }
+  if (status === 403) {
+    if (config.provider === 'openrouter') {
+      return 'OpenRouter 403 Forbidden — your API key has no credits or is invalid. Go to https://openrouter.ai/credits to add credits, or generate a new key.';
+    }
+    if (config.provider === 'openai') {
+      return 'OpenAI 403 Forbidden — your API key is invalid or your account has no billing. Check https://platform.openai.com/account/billing.';
+    }
+    return `API returned 403 Forbidden. Check your API key and account status. ${short}`;
+  }
+  if (status === 404) {
+    return `Model "${config.model}" not found. Check the model name in Settings. ${short}`;
+  }
+  if (status === 429) {
+    return 'Rate limited — too many requests. Wait a moment and try again.';
+  }
+  if (status >= 500) {
+    return `Server error (${status}) from ${config.provider}. The provider may be down. Try again later.`;
+  }
+  return `LLM API error (${status}): ${short}`;
 }
 
 /**
