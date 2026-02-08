@@ -21,7 +21,6 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
     openMicSetup,
   } = useVoiceInput(onResult);
 
-  // Auto-dismiss error after 15 seconds
   useEffect(() => {
     if (error) {
       const timer = setTimeout(clearError, 15000);
@@ -29,41 +28,38 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
     }
   }, [error, clearError]);
 
-  // API not available at all
   if (!isSupported) {
     return (
       <button
         disabled
-        className="p-2 rounded-lg bg-surface-400/30 text-slate-600 cursor-not-allowed"
-        title="Microphone not available in this browser"
+        className="p-2 rounded-lg bg-dark-4 text-slate-600 cursor-not-allowed"
+        title="Microphone not available"
       >
-        <MicOff size={15} />
+        <MicOff size={14} />
       </button>
     );
   }
 
   const busy = isListening || isTranscribing;
-  const needsSetup = micPermission === 'prompt' || micPermission === 'denied' || micPermission === 'unknown' || micPermission === 'checking';
+  const needsSetup =
+    micPermission === 'prompt' ||
+    micPermission === 'denied' ||
+    micPermission === 'unknown' ||
+    micPermission === 'checking';
+
   const isReady = micPermission === 'granted';
 
-  // Pick button title
   let buttonTitle = 'Start voice input';
   if (isListening) buttonTitle = 'Click to stop recording';
-  else if (isTranscribing) buttonTitle = 'Transcribing audio...';
+  else if (isTranscribing) buttonTitle = 'Transcribing audio…';
   else if (needsSetup) buttonTitle = 'Click to set up voice';
   else if (error) buttonTitle = 'Voice error — click to retry';
 
   const handleClick = () => {
-    if (isListening) {
-      stopListening();
-    } else if (isTranscribing) {
-      // Wait for transcription
-    } else if (!isReady) {
-      // Permission not granted → open setup page
-      openMicSetup();
-    } else {
-      startListening();
-    }
+    if (isListening) stopListening();
+    else if (isTranscribing) return;
+    else if (!isReady) openMicSetup();
+    else startListening();
   };
 
   return (
@@ -75,63 +71,58 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
           isListening
             ? 'bg-red-500 text-white shadow-lg shadow-red-500/30 voice-active'
             : isTranscribing
-              ? 'bg-blue-500/80 text-white animate-pulse cursor-wait'
+              ? 'bg-blue-600 text-white animate-pulse cursor-wait'
               : needsSetup
-                ? 'bg-orange-600/80 text-white hover:bg-orange-500'
+                ? 'bg-accent text-white hover:brightness-110'
                 : error
-                  ? 'bg-amber-600/80 text-white hover:bg-amber-500'
-                  : 'bg-transparent text-slate-400 hover:text-orange-400 hover:bg-orange-500/10'
+                  ? 'bg-amber-600 text-white hover:brightness-110'
+                  : 'bg-transparent text-slate-400 hover:text-accent hover:bg-dark-4'
         }`}
         title={buttonTitle}
       >
-        {/* Pulsing ring when recording */}
         {isListening && (
           <span className="absolute inset-0 rounded-lg bg-red-500 animate-ping opacity-30 pointer-events-none" />
         )}
-
         {isTranscribing ? (
-          <Loader2 size={15} className="animate-spin" />
+          <Loader2 size={14} className="animate-spin" />
         ) : needsSetup ? (
-          <ShieldAlert size={15} />
+          <ShieldAlert size={14} />
         ) : error ? (
-          <AlertTriangle size={15} />
+          <AlertTriangle size={14} />
         ) : (
-          <Mic size={15} />
+          <Mic size={14} />
         )}
       </button>
 
-      {/* Recording indicator — to the right so it doesn't cover buttons above */}
+      {/* Recording tag */}
       {isListening && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-red-500/90 rounded-lg text-[11px] text-white whitespace-nowrap shadow-lg z-50 pointer-events-none">
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-red-600 rounded-lg text-[10px] text-white font-semibold whitespace-nowrap shadow-lg z-50 pointer-events-none">
           🎤 Recording…
         </div>
       )}
 
-      {/* Transcribing indicator — to the right */}
+      {/* Transcribing tag */}
       {isTranscribing && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-blue-600/90 rounded-lg text-[11px] text-white whitespace-nowrap shadow-lg z-50 pointer-events-none animate-pulse">
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-blue-600 rounded-lg text-[10px] text-white font-semibold whitespace-nowrap shadow-lg z-50 pointer-events-none animate-pulse">
           ⏳ Transcribing…
         </div>
       )}
 
-      {/* Transcript result (briefly shown, above button — idle so no overlap) */}
+      {/* Transcript result (idle only) */}
       {!busy && transcript && !error && (
-        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-surface-300 border border-slate-600/50 rounded-lg text-[11px] text-slate-200 whitespace-nowrap max-w-[180px] truncate shadow-lg z-50 pointer-events-none">
+        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-dark-4 border border-dark-6 rounded-lg text-[10px] text-emerald-400 font-medium whitespace-nowrap max-w-[180px] truncate shadow-lg z-50 pointer-events-none">
           ✅ {transcript}
         </div>
       )}
 
       {/* Error tooltip */}
       {error && !busy && (
-        <div className="absolute bottom-full left-0 mb-2 px-2.5 py-1.5 bg-amber-900/90 border border-amber-700/50 rounded-lg text-[11px] text-amber-200 max-w-[240px] shadow-lg z-50">
+        <div className="absolute bottom-full left-0 mb-2 px-2.5 py-1.5 bg-amber-950 border border-amber-700/40 rounded-lg text-[11px] text-amber-200 max-w-[240px] shadow-lg z-50">
           <div className="flex items-start gap-1.5">
             <AlertTriangle size={11} className="flex-shrink-0 mt-0.5 text-amber-400" />
             <span className="leading-relaxed">{error}</span>
             <button
-              onClick={(e) => {
-                e.stopPropagation();
-                clearError();
-              }}
+              onClick={(e) => { e.stopPropagation(); clearError(); }}
               className="flex-shrink-0 ml-1 text-amber-400 hover:text-white transition-colors"
               title="Dismiss error"
               aria-label="Dismiss error"

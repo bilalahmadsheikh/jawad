@@ -19,7 +19,6 @@ export function Chat({ llm }: ChatProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -27,7 +26,6 @@ export function Chat({ llm }: ChatProps) {
   const handleSend = () => {
     const text = input.trim();
     if (!text || isLoading) return;
-
     if (isResearchMode) {
       llm.startWorkflow(text);
       setIsResearchMode(false);
@@ -55,41 +53,45 @@ export function Chat({ llm }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Voice Setup Banner (one-time) */}
+      {/* Mic onboarding (one-time) */}
       <MicSetupCard />
 
       {/* ── Messages ── */}
       <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
-        {messages.map((msg, i) => (
+        {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex gap-2 animate-fade-in ${
+            className={`flex gap-2.5 anim-in ${
               msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'
             }`}
           >
             {/* Avatar */}
             <div
-              className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5 ${
+              className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-1 ${
                 msg.role === 'user'
-                  ? 'bg-orange-500/20 text-orange-400'
-                  : 'bg-slate-700/60 text-slate-400'
+                  ? 'gradient-orange shadow-sm shadow-orange-600/20'
+                  : 'bg-dark-4'
               }`}
             >
-              {msg.role === 'user' ? <User size={14} /> : <Bot size={14} />}
+              {msg.role === 'user' ? (
+                <User size={13} className="text-white" />
+              ) : (
+                <Bot size={13} className="text-accent" />
+              )}
             </div>
 
             {/* Bubble */}
             <div
-              className={`max-w-[82%] rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed ${
+              className={`max-w-[82%] px-3.5 py-2.5 text-[13px] leading-relaxed ${
                 msg.role === 'user'
-                  ? 'msg-user text-orange-50 rounded-tr-md'
+                  ? 'bubble-user text-orange-100'
                   : msg.isError
-                    ? 'msg-error text-red-300 rounded-tl-md'
-                    : 'msg-assistant text-slate-200 rounded-tl-md'
+                    ? 'bubble-error text-red-300'
+                    : 'bubble-bot text-slate-200'
               }`}
             >
               {msg.role === 'assistant' ? (
-                <div className="markdown-content">
+                <div className="md">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
               ) : (
@@ -97,7 +99,7 @@ export function Chat({ llm }: ChatProps) {
               )}
               <div
                 className={`text-[10px] mt-1.5 ${
-                  msg.role === 'user' ? 'text-orange-400/40 text-right' : 'text-slate-600'
+                  msg.role === 'user' ? 'text-orange-500/40 text-right' : 'text-slate-600'
                 }`}
               >
                 {new Date(msg.timestamp).toLocaleTimeString([], {
@@ -109,17 +111,17 @@ export function Chat({ llm }: ChatProps) {
           </div>
         ))}
 
-        {/* Thinking indicator */}
+        {/* Thinking dots */}
         {isLoading && (
-          <div className="flex gap-2 animate-fade-in">
-            <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-slate-700/60 flex items-center justify-center mt-0.5">
-              <Bot size={14} className="text-orange-400 animate-pulse" />
+          <div className="flex gap-2.5 anim-in">
+            <div className="flex-shrink-0 w-7 h-7 rounded-lg bg-dark-4 flex items-center justify-center mt-1">
+              <Bot size={13} className="text-accent animate-pulse" />
             </div>
-            <div className="msg-assistant rounded-2xl rounded-tl-md px-4 py-3">
-              <div className="flex items-center gap-1.5">
-                <span className="thinking-dot" />
-                <span className="thinking-dot" />
-                <span className="thinking-dot" />
+            <div className="bubble-bot px-4 py-3.5">
+              <div className="flex items-center gap-2">
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
               </div>
             </div>
           </div>
@@ -129,42 +131,46 @@ export function Chat({ llm }: ChatProps) {
       </div>
 
       {/* ── Input Area ── */}
-      <div className="flex-shrink-0 border-t border-slate-700/50 bg-surface-100/80 p-2.5 space-y-2">
-        {/* Quick Actions Bar */}
+      <div className="flex-shrink-0 bg-dark-2 border-t border-dark-5/60 p-2.5 space-y-2">
+        {/* Quick actions */}
         <div className="flex items-center gap-1.5">
           <SummarizeButton onSummarize={llm.summarizePage} disabled={isLoading} />
+
           <button
             onClick={() => setIsResearchMode(!isResearchMode)}
-            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-200 btn-lift ${
+            className={`flex items-center gap-1.5 px-2.5 py-[6px] rounded-lg text-[11px] font-semibold transition-all duration-200 ${
               isResearchMode
-                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
-                : 'bg-surface-300/60 text-slate-400 hover:bg-surface-400/60 hover:text-slate-300'
+                ? 'bg-purple-600/20 text-purple-300 border border-purple-500/40 shadow-sm shadow-purple-500/10'
+                : 'bg-dark-4 text-slate-400 hover:text-slate-200 hover:bg-dark-5 border border-transparent'
             }`}
           >
-            <Zap size={12} />
+            <Zap size={11} />
             Research
           </button>
+
           <div className="flex-1" />
+
           <button
             onClick={llm.clearHistory}
-            className="p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+            className="btn-ghost p-1.5"
             title="Clear chat"
           >
             <Trash2 size={13} />
           </button>
         </div>
 
-        {/* Research Mode Banner */}
+        {/* Research mode banner */}
         {isResearchMode && (
-          <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl px-3 py-2 text-xs text-purple-300 animate-fade-in">
-            <span className="font-medium">🔬 Research Mode</span>
-            <span className="text-purple-400/70"> — Describe your goal. Jawad will open tabs & compile results.</span>
+          <div className="bg-purple-900/20 border border-purple-600/20 rounded-xl px-3 py-2 text-[11px] text-purple-300 anim-in">
+            <strong>🔬 Research Mode</strong>
+            <span className="text-purple-400/70"> — Describe a goal. Jawad will open tabs & compile results.</span>
           </div>
         )}
 
-        {/* Input Row */}
-        <div className="flex items-center gap-1.5 input-glow rounded-xl bg-surface-200/60 border border-slate-700/50 px-1.5 py-1 transition-all duration-200">
+        {/* Input row */}
+        <div className="flex items-center gap-1.5 bg-dark-1 border border-dark-5 rounded-xl px-1.5 py-1 transition-all duration-200 focus-within:border-accent/50 focus-within:shadow-[0_0_0_2px_rgba(249,115,22,0.1)]">
           <VoiceButton onResult={handleVoiceResult} disabled={isLoading} />
+
           <input
             ref={inputRef}
             type="text"
@@ -173,19 +179,20 @@ export function Chat({ llm }: ChatProps) {
             onKeyDown={handleKeyDown}
             placeholder={
               isResearchMode
-                ? 'Describe your research goal...'
-                : 'Ask Jawad anything...'
+                ? 'Describe your research goal…'
+                : 'Ask Jawad anything…'
             }
             disabled={isLoading}
             className="flex-1 bg-transparent py-1.5 text-[13px] text-slate-200 placeholder-slate-600 focus:outline-none disabled:opacity-40"
           />
+
           <button
             onClick={handleSend}
             disabled={isLoading || !input.trim()}
-            className={`p-2 rounded-lg transition-all duration-200 btn-lift ${
+            className={`p-2 rounded-lg transition-all duration-200 ${
               input.trim()
-                ? 'gradient-accent text-white shadow-md shadow-orange-500/20'
-                : 'bg-surface-400/50 text-slate-600'
+                ? 'gradient-orange text-white shadow-md shadow-orange-600/20 hover:shadow-orange-600/40'
+                : 'bg-dark-4 text-slate-600'
             } disabled:opacity-40 disabled:shadow-none`}
           >
             <Send size={14} />
