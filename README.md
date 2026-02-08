@@ -18,7 +18,7 @@
   <a href="#-documentation">Docs</a>
 </p>
 
----
+----
 
 ## What is Jawad?
 
