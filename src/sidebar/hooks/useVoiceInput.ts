@@ -19,7 +19,7 @@ interface UseVoiceInputReturn {
   stopListening: () => void;
   isSupported: boolean;
   clearError: () => void;
-  recheckPermission: () => void;
+  openMicSetup: () => void;
 }
 
 /**
@@ -51,22 +51,24 @@ function getSupportedMimeType(): string {
 }
 
 /**
- * Voice input hook — records audio **directly in the sidebar** context.
+ * Voice input hook — records audio directly in the sidebar context.
  *
- * Why sidebar and not content script?
- *   Firefox shows the "Allow microphone?" prompt attributed to the caller's
- *   origin. When getUserMedia runs in a content script, the prompt appears
- *   on the *webpage* behind the sidebar — the user never sees it.
- *   Running it in the sidebar (an extension page) makes the prompt appear
- *   right where the user is looking.
+ * ### Permission Flow (Siri-like):
+ *   1. On mount: check if `jawad_mic_granted` flag exists in storage
+ *   2. If not yet granted → sidebar shows a "Voice Setup" banner
+ *   3. User clicks banner → opens `mic-setup.html` in a new tab
+ *      → this is a full browser tab where Firefox's permission dialog
+ *        works reliably (unlike the narrow sidebar panel)
+ *   4. User clicks "Allow" → permission is stored for the extension origin
+ *   5. Tab auto-closes, sidebar detects the grant via storage listener
+ *   6. From then on: getUserMedia works instantly — no more prompts ever
  *
- * Flow:
- *   1. User clicks mic → sidebar calls navigator.mediaDevices.getUserMedia()
- *      → Firefox shows permission prompt *in the sidebar area*
- *   2. User allows → MediaRecorder starts capturing audio
- *   3. User clicks stop → MediaRecorder stops → audio blob assembled
- *   4. Audio sent to background as base64 for Whisper transcription
- *   5. Background returns VOICE_RESULT with transcribed text
+ * ### Recording Flow:
+ *   1. User clicks mic → sidebar calls getUserMedia() (already permitted)
+ *   2. MediaRecorder captures audio
+ *   3. User clicks stop → audio blob → base64
+ *   4. Sent to background for Whisper API transcription
+ *   5. Background returns VOICE_RESULT with text
  */
 export function useVoiceInput(
   onResult: (transcript: string) => void
@@ -80,7 +82,7 @@ export function useVoiceInput(
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  // Refs for MediaRecorder state (not in React state to avoid re-renders)
+  // Refs for MediaRecorder state
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
@@ -93,29 +95,66 @@ export function useVoiceInput(
     typeof navigator.mediaDevices.getUserMedia === 'function' &&
     typeof MediaRecorder !== 'undefined';
 
-  // ---- Permission check on mount ----
+  // ---- Check permission state on mount ----
   useEffect(() => {
     if (!isSupported) {
       setMicPermission('unavailable');
       return;
     }
-    checkPermission();
+    checkPermissionState();
+
+    // Listen for storage changes — detects when mic-setup.html grants permission
+    const onStorageChanged = (
+      changes: Record<string, { oldValue?: unknown; newValue?: unknown }>
+    ) => {
+      if (changes.jawad_mic_granted?.newValue === true) {
+        setMicPermission('granted');
+      }
+    };
+    browser.storage.onChanged.addListener(onStorageChanged);
+    return () => {
+      browser.storage.onChanged.removeListener(onStorageChanged);
+    };
   }, [isSupported]);
 
-  async function checkPermission() {
+  async function checkPermissionState() {
     setMicPermission('checking');
     try {
-      const result = await navigator.permissions.query({
-        name: 'microphone' as PermissionName,
-      });
-      setMicPermission(result.state as MicPermission);
+      // First check the storage flag (fast path)
+      const data = await browser.storage.local.get('jawad_mic_granted');
+      if (data.jawad_mic_granted === true) {
+        // Verify the actual browser permission hasn't been revoked
+        try {
+          const perm = await navigator.permissions.query({
+            name: 'microphone' as PermissionName,
+          });
+          if (perm.state === 'granted') {
+            setMicPermission('granted');
+            perm.onchange = () =>
+              setMicPermission(perm.state as MicPermission);
+            return;
+          }
+          // Permission was revoked — reset the flag
+          await browser.storage.local.remove('jawad_mic_granted');
+        } catch {
+          // Permissions API not available — trust the flag
+          setMicPermission('granted');
+          return;
+        }
+      }
 
-      // Live-update if user changes permission in browser settings
-      result.onchange = () => {
-        setMicPermission(result.state as MicPermission);
-      };
+      // No flag — check raw permission state
+      try {
+        const perm = await navigator.permissions.query({
+          name: 'microphone' as PermissionName,
+        });
+        setMicPermission(perm.state as MicPermission);
+        perm.onchange = () => setMicPermission(perm.state as MicPermission);
+      } catch {
+        // Permissions API unavailable — assume prompt needed
+        setMicPermission('prompt');
+      }
     } catch {
-      // Permissions API unavailable — we'll discover the state when getUserMedia runs
       setMicPermission('prompt');
     }
   }
@@ -124,7 +163,10 @@ export function useVoiceInput(
   useEffect(() => {
     const unsubscribe = addMessageHandler((msg) => {
       if (msg.type === 'VOICE_RESULT') {
-        const payload = msg.payload as { transcript: string; isFinal: boolean };
+        const payload = msg.payload as {
+          transcript: string;
+          isFinal: boolean;
+        };
         setTranscript(payload.transcript);
         setIsTranscribing(false);
         setIsListening(false);
@@ -164,21 +206,22 @@ export function useVoiceInput(
       return;
     }
 
+    // If permission hasn't been granted, open the setup page instead
+    if (micPermission !== 'granted') {
+      openMicSetupTab();
+      return;
+    }
+
     // Reset state
     setError(null);
     setTranscript('');
     setIsTranscribing(false);
 
     try {
-      // This triggers Firefox's "Allow microphone?" prompt if needed.
-      // Because we're in the sidebar (extension page), the prompt appears
-      // right here, not hidden behind the sidebar on the webpage.
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-      // Permission was granted!
       streamRef.current = stream;
       chunksRef.current = [];
-      setMicPermission('granted');
 
       const mimeType = getSupportedMimeType();
       mimeRef.current = mimeType;
@@ -222,7 +265,7 @@ export function useVoiceInput(
             type: 'VOICE_AUDIO_DIRECT',
             payload: {
               audio: pureBase64,
-              mimeType: actualMime.split(';')[0], // e.g. "audio/webm"
+              mimeType: actualMime.split(';')[0],
             },
           });
         } catch (err) {
@@ -240,7 +283,7 @@ export function useVoiceInput(
         streamRef.current = null;
       };
 
-      // Start capturing in 250ms chunks for robustness
+      // Start capturing
       recorder.start(250);
       setIsListening(true);
     } catch (err) {
@@ -250,23 +293,23 @@ export function useVoiceInput(
         e.name === 'NotAllowedError' ||
         e.name === 'PermissionDeniedError'
       ) {
+        // Permission was revoked — need to re-setup
         setMicPermission('denied');
+        await browser.storage.local.remove('jawad_mic_granted');
         setError(
-          'Microphone permission denied. Click the lock/site icon in the address bar to allow mic access, then try again.'
+          'Microphone permission was revoked. Click the mic button to set up again.'
         );
       } else if (e.name === 'NotFoundError') {
-        setError(
-          'No microphone found. Connect a microphone and try again.'
-        );
+        setError('No microphone found. Connect a microphone and try again.');
       } else if (e.name === 'NotReadableError' || e.name === 'AbortError') {
         setError(
-          'Microphone is in use by another app. Close other apps using the mic and try again.'
+          'Microphone is in use by another app. Close it and try again.'
         );
       } else {
         setError(`Microphone error: ${e.message}`);
       }
     }
-  }, [isSupported]);
+  }, [isSupported, micPermission]);
 
   // ---- Stop recording ----
   const stopListening = useCallback(() => {
@@ -274,20 +317,25 @@ export function useVoiceInput(
     if (recorder && recorder.state !== 'inactive') {
       recorder.stop(); // triggers onstop → sends audio for transcription
     } else {
-      // Nothing recording — just clean up
       setIsListening(false);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
   }, []);
 
+  // ---- Open the one-time mic setup page in a new tab ----
+  function openMicSetupTab() {
+    const url = browser.runtime.getURL('mic-setup.html');
+    browser.tabs.create({ url, active: true });
+  }
+
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  const recheckPermission = useCallback(() => {
-    if (isSupported) checkPermission();
-  }, [isSupported]);
+  const openMicSetup = useCallback(() => {
+    openMicSetupTab();
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -308,6 +356,6 @@ export function useVoiceInput(
     stopListening,
     isSupported,
     clearError,
-    recheckPermission,
+    openMicSetup,
   };
 }

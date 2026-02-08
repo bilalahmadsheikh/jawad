@@ -90,7 +90,32 @@ declare namespace browser {
         keys?: string | string[] | null
       ): Promise<Record<string, unknown>>;
       function set(items: Record<string, unknown>): Promise<void>;
+      function remove(keys: string | string[]): Promise<void>;
     }
+    function addListener(
+      callback: (
+        changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+        areaName: string
+      ) => void
+    ): void;
+    function removeListener(
+      callback: (
+        changes: Record<string, { oldValue?: unknown; newValue?: unknown }>,
+        areaName: string
+      ) => void
+    ): void;
+    const onChanged: {
+      addListener(
+        callback: (
+          changes: Record<string, { oldValue?: unknown; newValue?: unknown }>
+        ) => void
+      ): void;
+      removeListener(
+        callback: (
+          changes: Record<string, { oldValue?: unknown; newValue?: unknown }>
+        ) => void
+      ): void;
+    };
   }
 }
 

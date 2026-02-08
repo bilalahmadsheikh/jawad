@@ -18,7 +18,7 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
     stopListening,
     isSupported,
     clearError,
-    recheckPermission,
+    openMicSetup,
   } = useVoiceInput(onResult);
 
   // Auto-dismiss error after 15 seconds
@@ -29,7 +29,7 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
     }
   }, [error, clearError]);
 
-  // API not available at all (very rare)
+  // API not available at all
   if (!isSupported) {
     return (
       <button
@@ -43,26 +43,24 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
   }
 
   const busy = isListening || isTranscribing;
-  const micBlocked = micPermission === 'denied' || micPermission === 'unavailable';
+  const needsSetup = micPermission === 'prompt' || micPermission === 'denied' || micPermission === 'unknown' || micPermission === 'checking';
+  const isReady = micPermission === 'granted';
 
-  // Determine button title
+  // Pick button title
   let buttonTitle = 'Start voice input';
   if (isListening) buttonTitle = 'Click to stop recording';
   else if (isTranscribing) buttonTitle = 'Transcribing audio...';
-  else if (micPermission === 'denied') buttonTitle = 'Microphone denied — click to retry';
-  else if (micPermission === 'prompt') buttonTitle = 'Click to allow microphone and start recording';
+  else if (needsSetup) buttonTitle = 'Click to set up voice';
   else if (error) buttonTitle = 'Voice error — click to retry';
 
   const handleClick = () => {
     if (isListening) {
       stopListening();
     } else if (isTranscribing) {
-      // Wait for transcription to finish
-    } else if (micBlocked && !error) {
-      // Re-check permission (user may have changed it in browser settings)
-      recheckPermission();
-      // Also try to start — getUserMedia will re-prompt if possible
-      startListening();
+      // Wait for transcription
+    } else if (!isReady) {
+      // Permission not granted → open setup page
+      openMicSetup();
     } else {
       startListening();
     }
@@ -78,13 +76,11 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
             ? 'bg-red-500 text-white shadow-lg shadow-red-500/30'
             : isTranscribing
               ? 'bg-blue-500 text-white animate-pulse cursor-wait'
-              : micBlocked
+              : needsSetup
                 ? 'bg-orange-600 text-white hover:bg-orange-500'
                 : error
                   ? 'bg-amber-600 text-white hover:bg-amber-500'
-                  : micPermission === 'prompt'
-                    ? 'bg-slate-600 text-yellow-300 hover:bg-slate-500 ring-1 ring-yellow-400/50'
-                    : 'bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50'
+                  : 'bg-slate-700 text-slate-300 hover:bg-slate-600 disabled:opacity-50'
         }`}
         title={buttonTitle}
       >
@@ -95,7 +91,7 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
 
         {isTranscribing ? (
           <Loader2 size={16} className="animate-spin" />
-        ) : micBlocked ? (
+        ) : needsSetup ? (
           <ShieldAlert size={16} />
         ) : error ? (
           <AlertTriangle size={16} />
@@ -104,10 +100,10 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
         )}
       </button>
 
-      {/* First-time hint: permission not yet granted */}
-      {!busy && !error && micPermission === 'prompt' && (
-        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-yellow-900/90 border border-yellow-600 rounded text-xs text-yellow-200 whitespace-nowrap shadow-lg z-50 pointer-events-none">
-          🎤 Click to allow mic access
+      {/* Setup hint — mic not yet enabled */}
+      {!busy && !error && needsSetup && (
+        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-orange-900/90 border border-orange-600 rounded text-xs text-orange-200 whitespace-nowrap shadow-lg z-50 pointer-events-none">
+          🎤 Click to enable voice
         </div>
       )}
 
@@ -125,7 +121,7 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
         </div>
       )}
 
-      {/* Transcript result (briefly shown) */}
+      {/* Transcript result */}
       {!busy && transcript && !error && (
         <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-xs text-slate-200 whitespace-nowrap max-w-[200px] truncate shadow-lg z-50 pointer-events-none">
           ✅ {transcript}
@@ -139,7 +135,10 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
             <AlertTriangle size={12} className="flex-shrink-0 mt-0.5" />
             <span>{error}</span>
             <button
-              onClick={(e) => { e.stopPropagation(); clearError(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                clearError();
+              }}
               className="flex-shrink-0 ml-1 hover:text-white"
               title="Dismiss error"
               aria-label="Dismiss error"

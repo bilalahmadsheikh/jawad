@@ -3,6 +3,7 @@ import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '../stores/chat-store';
 import { VoiceButton } from './VoiceButton';
 import { SummarizeButton } from './SummarizeButton';
+import { MicSetupCard } from './MicSetupCard';
 import type { LLMActions } from '../hooks/useLLM';
 import { Send, Trash2, Loader2, Zap } from 'lucide-react';
 
@@ -54,6 +55,9 @@ export function Chat({ llm }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full">
+      {/* Voice Setup Banner (one-time) */}
+      <MicSetupCard />
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-3">
         {messages.map((msg) => (
