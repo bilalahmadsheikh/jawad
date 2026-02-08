@@ -22,15 +22,7 @@ interface ChatState {
 }
 
 export const useChatStore = create<ChatState>((set) => ({
-  messages: [
-    {
-      id: 'welcome',
-      role: 'assistant',
-      content:
-        "Hey there! 👋 I'm **Jawad** — your AI browser companion.\n\nHere's what I can do:\n\n🔍 **Summarize** — Digest any page instantly\n🖱️ **Navigate** — Click, fill, and interact\n📚 **Research** — Multi-tab deep dives\n🎙️ **Voice** — Hands-free commands\n\nHead to **Config** to connect your AI provider, then just ask away!",
-      timestamp: Date.now(),
-    },
-  ],
+  messages: [],
   isLoading: false,
   activeTab: 'chat',
 
@@ -45,7 +37,7 @@ export const useChatStore = create<ChatState>((set) => ({
     set({
       messages: [
         {
-          id: 'welcome',
+          id: 'cleared',
           role: 'assistant',
           content: 'Chat cleared. How can I help you?',
           timestamp: Date.now(),
@@ -53,4 +45,3 @@ export const useChatStore = create<ChatState>((set) => ({
       ],
     }),
 }));
-

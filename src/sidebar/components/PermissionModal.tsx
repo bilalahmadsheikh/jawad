@@ -3,105 +3,85 @@ import type { PermissionRequest } from '../../lib/types';
 import { PERMISSION_COLORS } from '../../lib/constants';
 import { ShieldAlert, Check, X, Clock, Ban } from 'lucide-react';
 
-interface PermissionModalProps {
+interface Props {
   request: PermissionRequest;
-  onDecision: (requestId: string, decision: string) => void;
+  onDecision: (id: string, decision: string) => void;
 }
 
-export function PermissionModal({ request, onDecision }: PermissionModalProps) {
+export function PermissionModal({ request, onDecision }: Props) {
   const color = PERMISSION_COLORS[request.permissionLevel] || '#f97316';
-  const levelLabels: Record<string, string> = {
-    'read-only': 'Read Only',
-    navigate: 'Navigate',
-    interact: 'Interact',
-    submit: 'Submit / Modify',
-  };
-
-  const decide = (decision: string) => onDecision(request.id, decision);
+  const labels: Record<string, string> = { 'read-only': 'Read Only', navigate: 'Navigate', interact: 'Interact', submit: 'Submit / Modify' };
+  const decide = (d: string) => onDecision(request.id, d);
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-end justify-center z-50 p-2">
-      <div className="bg-dark-2 border border-dark-5 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden anim-slide">
+    <div className="fixed inset-0 flex items-end justify-center z-50 p-2" style={{ background: 'rgba(0,0,0,0.8)' }}>
+      <div className="w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl slide-up" style={{ background: '#151e30', border: '1px solid #253045' }}>
         {/* Header */}
-        <div className="flex items-center gap-3 px-4 py-3 bg-dark-3 border-b border-dark-5">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ backgroundColor: `${color}20` }}>
+        <div className="flex items-center gap-3 px-4 py-3.5" style={{ background: '#131b2c', borderBottom: '1px solid #253045' }}>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${color}18` }}>
             <ShieldAlert size={18} style={{ color }} />
           </div>
           <div>
-            <span className="font-bold text-[14px] text-white block">Permission Request</span>
-            <span className="text-[10px] text-slate-500">Jawad needs your approval</span>
+            <span className="font-bold text-[14px] block" style={{ color: '#eef2f7' }}>Permission Request</span>
+            <span className="text-[10px]" style={{ color: '#5d6f85' }}>Jawad needs your approval</span>
           </div>
         </div>
 
         {/* Body */}
-        <div className="px-4 py-3 space-y-2.5">
-          <div className="card-elevated p-2.5">
-            <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-1">Action</div>
-            <div className="text-[13px] text-slate-200 font-semibold">
-              Use <span className="text-accent">{request.toolName}</span>
-            </div>
-          </div>
-
-          <div className="card-elevated p-2.5">
-            <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-1">Site</div>
-            <div className="text-[13px] text-slate-200">{request.site}</div>
-          </div>
+        <div className="px-4 py-3.5 space-y-2.5">
+          <InfoRow label="Action">
+            Use <strong style={{ color: '#e8792b' }}>{request.toolName}</strong>
+          </InfoRow>
+          <InfoRow label="Site">{request.site}</InfoRow>
 
           {Object.keys(request.parameters).length > 0 && (
-            <div className="card-elevated p-2.5">
-              <div className="text-[9px] text-slate-500 uppercase tracking-wider font-bold mb-1">Details</div>
-              <pre className="bg-dark-0 rounded-lg p-2 text-[10px] font-mono text-slate-400 max-h-20 overflow-y-auto border border-dark-5">
+            <InfoRow label="Details">
+              <pre className="rounded-lg p-2 text-[10px] font-mono max-h-20 overflow-y-auto" style={{ background: '#0a1020', border: '1px solid #253045', color: '#8899ad' }}>
                 {JSON.stringify(request.parameters, null, 2)}
               </pre>
-            </div>
+            </InfoRow>
           )}
 
           <div className="flex items-center gap-2">
-            <span className="text-[9px] text-slate-500 uppercase tracking-wider font-bold">Level:</span>
-            <span className="badge text-white" style={{ backgroundColor: color }}>
-              {levelLabels[request.permissionLevel] || request.permissionLevel}
-            </span>
+            <span className="text-[9px] uppercase tracking-wider font-bold" style={{ color: '#5d6f85' }}>Level:</span>
+            <span className="badge text-white" style={{ background: color }}>{labels[request.permissionLevel] || request.permissionLevel}</span>
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="px-4 py-3 border-t border-dark-5 space-y-2 bg-dark-1">
+        {/* Buttons */}
+        <div className="px-4 py-3.5 space-y-2" style={{ background: '#131b2c', borderTop: '1px solid #253045' }}>
           <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => decide('allow-once')}
-              className="flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold rounded-xl transition-all shadow-sm shadow-emerald-600/20"
-            >
-              <Check size={13} /> Allow Once
-            </button>
-            <button
-              onClick={() => decide('allow-site')}
-              className="flex items-center justify-center gap-1.5 py-2.5 bg-emerald-700 hover:bg-emerald-600 text-white text-[11px] font-bold rounded-xl transition-all"
-            >
-              <Check size={13} /> Allow for Site
-            </button>
+            <Btn onClick={() => decide('allow-once')} bg="#16a34a" icon={<Check size={13} />}>Allow Once</Btn>
+            <Btn onClick={() => decide('allow-site')} bg="#15803d" icon={<Check size={13} />}>Allow Site</Btn>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={() => decide('allow-session')}
-              className="flex items-center justify-center gap-1 py-2 bg-dark-4 hover:bg-dark-5 text-slate-300 text-[10px] font-semibold rounded-xl transition-all"
-            >
-              <Clock size={11} /> Session
-            </button>
-            <button
-              onClick={() => decide('deny')}
-              className="flex items-center justify-center gap-1 py-2 bg-red-700 hover:bg-red-600 text-white text-[10px] font-semibold rounded-xl transition-all"
-            >
-              <X size={11} /> Deny
-            </button>
-            <button
-              onClick={() => decide('deny-all')}
-              className="flex items-center justify-center gap-1 py-2 bg-red-900 hover:bg-red-800 text-white text-[10px] font-semibold rounded-xl transition-all"
-            >
-              <Ban size={11} /> Block
-            </button>
+            <Btn onClick={() => decide('allow-session')} bg="#1d2840" fg="#8899ad" icon={<Clock size={11} />}>Session</Btn>
+            <Btn onClick={() => decide('deny')} bg="#b91c1c" icon={<X size={11} />}>Deny</Btn>
+            <Btn onClick={() => decide('deny-all')} bg="#7f1d1d" icon={<Ban size={11} />}>Block</Btn>
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl p-2.5" style={{ background: '#172033', border: '1px solid #253045' }}>
+      <div className="text-[9px] uppercase tracking-wider font-bold mb-1" style={{ color: '#5d6f85' }}>{label}</div>
+      <div className="text-[13px]" style={{ color: '#bfc9d6' }}>{children}</div>
+    </div>
+  );
+}
+
+function Btn({ onClick, bg, fg = '#fff', icon, children }: { onClick: () => void; bg: string; fg?: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-bold transition-all duration-200 hover:brightness-110"
+      style={{ background: bg, color: fg }}
+    >
+      {icon} {children}
+    </button>
   );
 }
