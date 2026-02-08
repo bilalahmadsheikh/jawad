@@ -81,11 +81,37 @@ export async function chatCompletion(
     body.tool_choice = 'auto';
   }
 
-  const response = await fetch(url, {
+  let response = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
   });
+
+  // Ollama fallback: some models reject the tools param entirely.
+  // Retry without tools so the agent-manager XML parser can handle it.
+  if (!response.ok && config.provider === 'ollama' && body.tools) {
+    const errText = await response.text();
+    if (
+      response.status === 400 ||
+      response.status === 422 ||
+      /tool|function/i.test(errText)
+    ) {
+      console.warn(
+        '[any-llm-router] Ollama rejected tools param, retrying without tools'
+      );
+      delete body.tools;
+      delete body.tool_choice;
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+    } else {
+      throw new Error(
+        `LLM API error (${response.status}): ${errText.substring(0, 200)}`
+      );
+    }
+  }
 
   if (!response.ok) {
     const errorText = await response.text();
