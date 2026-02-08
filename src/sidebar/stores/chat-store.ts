@@ -8,7 +8,7 @@ export interface ChatMessage {
   isError?: boolean;
 }
 
-type TabId = 'chat' | 'activity' | 'settings' | 'harbor';
+type TabId = 'chat' | 'ghost' | 'activity' | 'settings' | 'harbor';
 
 interface ChatState {
   messages: ChatMessage[];

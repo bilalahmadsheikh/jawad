@@ -6,6 +6,13 @@
 
 import { readPage } from './dom-reader';
 import { clickElement, fillForm, scrollPage } from './page-actions';
+import {
+  toggleGhostMode,
+  activateGhostMode,
+  deactivateGhostMode,
+  getGhostModeState,
+  refreshGhostMode,
+} from './ghost-mode/ghost-mode';
 
 // ---------- Voice capture state (MediaRecorder-based) ----------
 let mediaRecorder: MediaRecorder | null = null;
@@ -46,6 +53,33 @@ browser.runtime.onMessage.addListener(
 
       case 'SELECT_TEXT':
         return selectText(message.payload!.selector as string);
+
+      // ── GHOST MODE ──
+      case 'GHOST_MODE_TOGGLE':
+        return Promise.resolve({ active: toggleGhostMode() });
+
+      case 'GHOST_MODE_ACTIVATE':
+        activateGhostMode();
+        return Promise.resolve({ active: true });
+
+      case 'GHOST_MODE_DEACTIVATE':
+        deactivateGhostMode();
+        return Promise.resolve({ active: false });
+
+      case 'GHOST_MODE_GET_STATE':
+        return Promise.resolve(getGhostModeState());
+
+      case 'GHOST_MODE_REFRESH':
+        refreshGhostMode();
+        return Promise.resolve({ active: true });
+
+      case 'GHOST_MODE_DISPATCH_ACTION': {
+        const actionPayload = message.payload as { action: string };
+        window.dispatchEvent(
+          new CustomEvent('jawad-ghost-action', { detail: actionPayload })
+        );
+        return Promise.resolve({ success: true });
+      }
 
       // Voice input — uses MediaRecorder for reliable audio capture (Whisper path)
       case 'START_VOICE_INPUT': {

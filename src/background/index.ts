@@ -48,6 +48,24 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
         return;
       }
 
+      // Ghost Mode commands — relay to content script
+      if (
+        message.type === 'GHOST_MODE_TOGGLE' ||
+        message.type === 'GHOST_MODE_ACTIVATE' ||
+        message.type === 'GHOST_MODE_DEACTIVATE' ||
+        message.type === 'GHOST_MODE_GET_STATE' ||
+        message.type === 'GHOST_MODE_REFRESH'
+      ) {
+        relayGhostModeCommand(message.type as string, port);
+        return;
+      }
+
+      // Ghost Mode actions (fill, click CTA, export) — relay to content script
+      if (message.type === 'GHOST_MODE_ACTION') {
+        relayGhostModeAction(message.payload as { action: string });
+        return;
+      }
+
       handleMessage(message, port);
     });
 
@@ -78,6 +96,17 @@ browser.runtime.onMessage.addListener(
       message.type === 'VOICE_ERROR' ||
       message.type === 'VOICE_STARTED' ||
       message.type === 'VOICE_TRANSCRIBING'
+    ) {
+      if (sidebarPort) {
+        sidebarPort.postMessage(msg);
+      }
+      return Promise.resolve(undefined);
+    }
+
+    // Ghost Mode state/action messages: forward from content script to sidebar
+    if (
+      message.type === 'GHOST_MODE_STATE' ||
+      message.type === 'GHOST_MODE_ACTION_RESULT'
     ) {
       if (sidebarPort) {
         sidebarPort.postMessage(msg);
@@ -224,6 +253,53 @@ async function fetchOllamaModels(baseUrl: string, port: browser.Port): Promise<v
   } catch (err) {
     console.warn('[Jawad] Failed to fetch Ollama models:', err);
     port.postMessage({ type: 'OLLAMA_MODELS', payload: { models: [] } });
+  }
+}
+
+/**
+ * Relay Ghost Mode commands to the active tab's content script.
+ */
+async function relayGhostModeCommand(type: string, port: browser.Port): Promise<void> {
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    if (!tab?.id) {
+      port.postMessage({
+        type: 'GHOST_MODE_STATE',
+        payload: { active: false, error: 'No active tab' },
+      });
+      return;
+    }
+
+    const result = await browser.tabs.sendMessage(tab.id, { type });
+    port.postMessage({
+      type: 'GHOST_MODE_STATE',
+      payload: result || { active: false },
+    });
+  } catch {
+    port.postMessage({
+      type: 'GHOST_MODE_STATE',
+      payload: { active: false, error: 'Cannot access this page. Navigate to a regular webpage.' },
+    });
+  }
+}
+
+/**
+ * Relay Ghost Mode actions to the content script.
+ */
+async function relayGhostModeAction(payload: { action: string }): Promise<void> {
+  try {
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    const tab = tabs[0];
+    if (!tab?.id) return;
+
+    // Dispatch custom event on the page
+    await browser.tabs.sendMessage(tab.id, {
+      type: 'GHOST_MODE_DISPATCH_ACTION',
+      payload,
+    });
+  } catch {
+    // Content script may not be loaded
   }
 }
 

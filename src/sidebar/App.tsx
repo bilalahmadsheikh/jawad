@@ -8,9 +8,11 @@ import { HarborManager } from './components/HarborManager';
 import { PermissionModal } from './components/PermissionModal';
 import { WorkflowPlan } from './components/WorkflowPlan';
 import { CommandPalette } from './components/CommandPalette';
+import { GhostModePanel } from './components/GhostModePanel';
 import { Toast } from './components/Toast';
 import type { ToastData } from './components/Toast';
 import { useLLM } from './hooks/useLLM';
+import { useGhostMode } from './hooks/useGhostMode';
 import {
   MessageSquare,
   Activity,
@@ -19,9 +21,10 @@ import {
   Wifi,
   Command,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 
-type TabId = 'chat' | 'activity' | 'settings' | 'harbor';
+type TabId = 'chat' | 'ghost' | 'activity' | 'settings' | 'harbor';
 
 export default function App() {
   const activeTab = useChatStore((s) => s.activeTab);
@@ -30,6 +33,7 @@ export default function App() {
   const logCount = useHarborStore((s) => s.actionLog.length);
   const messageCount = useChatStore((s) => s.messages.length);
   const llm = useLLM();
+  const ghostMode = useGhostMode();
 
   // Command palette
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -49,17 +53,23 @@ export default function App() {
     return m > 0 ? `${m}m ${sec}s` : `${sec}s`;
   };
 
-  // Global keyboard shortcut: Ctrl+K for command palette
+  // Global keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key === 'k') {
         e.preventDefault();
         setCmdOpen((o) => !o);
       }
+      // Ctrl+Shift+G: Toggle Ghost Mode
+      if (e.ctrlKey && e.shiftKey && e.key === 'G') {
+        e.preventDefault();
+        ghostMode.toggle();
+        setActiveTab('ghost');
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [ghostMode]);
 
   const showToast = useCallback((type: ToastData['type'], message: string) => {
     setToast({ id: `${Date.now()}`, type, message });
@@ -90,6 +100,7 @@ export default function App() {
 
   const tabs: { id: TabId; icon: React.ReactNode; label: string; badge?: number }[] = [
     { id: 'chat',     icon: <MessageSquare size={13} />, label: 'Chat', badge: messageCount > 0 ? messageCount : undefined },
+    { id: 'ghost',    icon: <Eye size={13} />,           label: 'Ghost', badge: ghostMode.state.active ? ghostMode.state.elementCount : undefined },
     { id: 'activity', icon: <Activity size={13} />,      label: 'Log',  badge: logCount > 0 ? logCount : undefined },
     { id: 'settings', icon: <SettingsIcon size={13} />,  label: 'Config' },
     { id: 'harbor',   icon: <Shield size={13} />,        label: 'Harbor' },
@@ -191,7 +202,24 @@ export default function App() {
 
       {/* ── Content ── */}
       <main className="flex-1 overflow-hidden">
-        {activeTab === 'chat' && <Chat llm={llm} showToast={showToast} />}
+        {activeTab === 'chat' && (
+          <Chat
+            llm={llm}
+            showToast={showToast}
+            onGhostMode={() => {
+              ghostMode.toggle();
+              setActiveTab('ghost');
+            }}
+          />
+        )}
+        {activeTab === 'ghost' && (
+          <GhostModePanel
+            state={ghostMode.state}
+            onToggle={ghostMode.toggle}
+            onRefresh={ghostMode.refresh}
+            showToast={showToast}
+          />
+        )}
         {activeTab === 'activity' && <ActionLog />}
         {activeTab === 'settings' && <Settings llm={llm} />}
         {activeTab === 'harbor' && <HarborManager />}

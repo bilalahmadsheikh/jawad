@@ -11,17 +11,18 @@ import {
   Brain, Shield, Command, Wand2, Copy, Check, ThumbsUp,
   ThumbsDown, RefreshCw, Download, ChevronDown, Table2,
   Languages, Bell, Hash, Keyboard, Search, Code,
-  Star, Eye, Crosshair, PenTool, BookOpen, Layers,
+  Star, Crosshair, PenTool, BookOpen, Layers, Eye,
   TrendingUp, Clock, MessageCircle,
 } from 'lucide-react';
 
 interface ChatProps {
   llm: LLMActions;
   showToast?: (type: ToastData['type'], message: string) => void;
+  onGhostMode?: () => void;
 }
 
 /* ── Welcome screen ── */
-function WelcomeScreen({ onChip, onVoice }: { onChip: (text: string) => void; onVoice: () => void }) {
+function WelcomeScreen({ onChip, onVoice, onGhostMode }: { onChip: (text: string) => void; onVoice: () => void; onGhostMode?: () => void }) {
   const quickActions = [
     { icon: <FileText size={14} />, label: 'Summarize', desc: 'Get page summary', action: 'Summarize this page', color: '#22c55e', hotkey: 'S' },
     { icon: <Globe size={14} />, label: 'Analyze', desc: 'What is this?', action: 'What is this website about?', color: '#3b82f6', hotkey: 'A' },
@@ -31,6 +32,7 @@ function WelcomeScreen({ onChip, onVoice }: { onChip: (text: string) => void; on
     { icon: <Bookmark size={14} />, label: 'Key Points', desc: 'Extract facts', action: 'Extract the key points and facts from this page', color: '#06b6d4', hotkey: 'K' },
     { icon: <Languages size={14} />, label: 'Translate', desc: 'Any language', action: 'Translate the main content of this page to Spanish', color: '#8b5cf6', hotkey: 'L' },
     { icon: <Bell size={14} />, label: 'Watch Price', desc: 'Track changes', action: 'Watch this product for price changes', color: '#ef4444', hotkey: 'W' },
+    { icon: <Eye size={14} />, label: 'Ghost Mode', desc: 'AI Vision', action: '__GHOST_MODE__', color: '#10b981', hotkey: 'G' },
   ];
 
   // Animated text
@@ -96,10 +98,16 @@ function WelcomeScreen({ onChip, onVoice }: { onChip: (text: string) => void; on
       {/* Quick action grid — 2x4 */}
       <div className="grid grid-cols-2 gap-1.5 w-full max-w-[280px] mb-3">
         {quickActions.map((c, i) => (
-          <button
-            key={c.label}
-            onClick={() => onChip(c.action)}
-            className="group flex items-center gap-2 p-2 rounded-xl text-left transition-all duration-200 fade-up"
+            <button
+              key={c.label}
+              onClick={() => {
+                if (c.action === '__GHOST_MODE__' && onGhostMode) {
+                  onGhostMode();
+                } else if (c.action !== '__GHOST_MODE__') {
+                  onChip(c.action);
+                }
+              }}
+              className="group flex items-center gap-2 p-2 rounded-xl text-left transition-all duration-200 fade-up"
             style={{
               background: '#0e1525',
               border: '1px solid #1a2538',
@@ -273,7 +281,7 @@ function SessionStats() {
   );
 }
 
-export function Chat({ llm, showToast }: ChatProps) {
+export function Chat({ llm, showToast, onGhostMode }: ChatProps) {
   const messages = useChatStore((s) => s.messages);
   const isLoading = useChatStore((s) => s.isLoading);
   const [input, setInput] = useState('');
@@ -383,7 +391,7 @@ export function Chat({ llm, showToast }: ChatProps) {
     <div className="flex flex-col h-full">
 
       {!hasMessages && !isLoading ? (
-        <WelcomeScreen onChip={send} onVoice={() => voiceRef.current?.startListening()} />
+        <WelcomeScreen onChip={send} onVoice={() => voiceRef.current?.startListening()} onGhostMode={onGhostMode} />
       ) : (
         <>
           {/* Session stats */}

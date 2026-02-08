@@ -1027,3 +1027,25 @@ input[type="checkbox"] {
   background: #1a2538;
   flex-shrink: 0;
 }
+
+/* ═══════════════════════════════════════════
+   GHOST MODE TAB INDICATOR
+   ═══════════════════════════════════════════ */
+
+@keyframes ghostPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+  50%      { box-shadow: 0 0 0 4px rgba(16, 185, 129, 0); }
+}
+
+.ghost-active-indicator {
+  animation: ghostPulse 2s ease-in-out infinite;
+}
+
+/* Ghost Mode panel grid item hover */
+.ghost-grid-item {
+  transition: all 0.2s ease;
+}
+.ghost-grid-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
