@@ -51,41 +51,39 @@ export function MicSetupCard() {
   return (
     <div
       onClick={openSetup}
-      className="mx-3 mt-2 bg-gradient-to-r from-orange-500/10 to-amber-500/10 border border-orange-500/30 rounded-lg px-3 py-2.5 cursor-pointer hover:border-orange-400/50 transition-colors group"
+      className="mx-3 mt-2 glass-card rounded-xl px-3 py-3 cursor-pointer hover:border-orange-500/30 transition-all duration-200 group animate-fade-in"
     >
-      <div className="flex items-start gap-2.5">
+      <div className="flex items-start gap-3">
         {/* Mic icon */}
-        <div className="flex-shrink-0 mt-0.5 w-8 h-8 rounded-full bg-orange-500/20 flex items-center justify-center">
+        <div className="flex-shrink-0 w-9 h-9 rounded-xl gradient-accent-subtle border border-orange-500/20 flex items-center justify-center">
           <Mic size={16} className="text-orange-400" />
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-orange-300">
-              Enable Voice Commands
+            <span className="text-[13px] font-semibold text-orange-300">
+              Enable Voice
             </span>
             <ExternalLink
-              size={11}
-              className="text-orange-500/60 group-hover:text-orange-400 transition-colors"
+              size={10}
+              className="text-orange-500/40 group-hover:text-orange-400 transition-colors"
             />
           </div>
-          <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
-            One-time setup — grant microphone access so you can talk to Jawad
-            hands-free, just like Siri.
+          <p className="text-[11px] text-slate-500 mt-0.5 leading-relaxed">
+            One-time setup — grant mic access to talk to Jawad hands-free
           </p>
         </div>
 
         {/* Dismiss button */}
         <button
           onClick={dismiss}
-          className="flex-shrink-0 p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-300 transition-colors"
+          className="flex-shrink-0 p-1.5 rounded-lg text-slate-600 hover:text-slate-300 hover:bg-surface-400/40 transition-all"
           title="Dismiss"
           aria-label="Dismiss voice setup"
         >
-          <X size={14} />
+          <X size={13} />
         </button>
       </div>
     </div>
   );
 }
-

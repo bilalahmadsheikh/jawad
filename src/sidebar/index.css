@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Jawad Sidebar Styles */
+/* ─── Jawad Sidebar — Global Styles ─── */
+
 * {
   margin: 0;
   padding: 0;
@@ -13,9 +14,11 @@ html, body {
   width: 100%;
   height: 100vh;
   overflow: hidden;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  background: #0f172a;
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: #0b1120;
   color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -25,9 +28,10 @@ html, body {
   flex-direction: column;
 }
 
-/* Scrollbar styles */
+/* ─── Scrollbar ─── */
+
 ::-webkit-scrollbar {
-  width: 6px;
+  width: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -35,33 +39,103 @@ html, body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 3px;
+  background: rgba(100, 116, 139, 0.3);
+  border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgba(100, 116, 139, 0.5);
 }
 
-/* Markdown content styling */
-.markdown-content h1 { @apply text-lg font-bold mb-2; }
-.markdown-content h2 { @apply text-base font-semibold mb-2; }
-.markdown-content h3 { @apply text-sm font-semibold mb-1; }
-.markdown-content p { @apply text-sm mb-2 leading-relaxed; }
-.markdown-content ul { @apply list-disc list-inside text-sm mb-2 space-y-1; }
-.markdown-content ol { @apply list-decimal list-inside text-sm mb-2 space-y-1; }
-.markdown-content li { @apply text-sm; }
-.markdown-content code { @apply bg-slate-700 px-1 py-0.5 rounded text-xs font-mono; }
-.markdown-content pre { @apply bg-slate-700 p-2 rounded text-xs font-mono overflow-x-auto mb-2; }
-.markdown-content pre code { @apply bg-transparent p-0; }
-.markdown-content a { @apply text-orange-400 underline; }
-.markdown-content blockquote { @apply border-l-2 border-slate-500 pl-3 italic text-slate-400 mb-2; }
-.markdown-content strong { @apply font-semibold text-slate-200; }
-.markdown-content table { @apply w-full text-sm mb-2; }
-.markdown-content th { @apply text-left font-semibold p-1 border-b border-slate-600; }
-.markdown-content td { @apply p-1 border-b border-slate-700; }
+/* Firefox scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.3) transparent;
+}
 
-/* Animation for voice recording — no scale transform (was blocking clicks) */
+/* ─── Glass effects ─── */
+
+.glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.glass-card {
+  background: rgba(30, 41, 59, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+/* ─── Gradient accents ─── */
+
+.gradient-header {
+  background: linear-gradient(135deg, #0f172a 0%, #1a1040 50%, #0f172a 100%);
+  border-bottom: 1px solid rgba(249, 115, 22, 0.15);
+}
+
+.gradient-accent {
+  background: linear-gradient(135deg, #f97316 0%, #f59e0b 100%);
+}
+
+.gradient-accent-subtle {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
+}
+
+/* ─── Message bubbles ─── */
+
+.msg-user {
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.12) 0%, rgba(249, 115, 22, 0.06) 100%);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.msg-assistant {
+  background: linear-gradient(135deg, rgba(30, 41, 59, 0.8) 0%, rgba(30, 41, 59, 0.5) 100%);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+}
+
+.msg-error {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(239, 68, 68, 0.04) 100%);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* ─── Markdown content styling ─── */
+
+.markdown-content h1 { @apply text-base font-bold mb-2 text-slate-100; }
+.markdown-content h2 { @apply text-sm font-semibold mb-2 text-slate-200; }
+.markdown-content h3 { @apply text-[13px] font-semibold mb-1 text-slate-200; }
+.markdown-content p { @apply text-[13px] mb-2 leading-relaxed text-slate-300; }
+.markdown-content ul { @apply list-disc list-inside text-[13px] mb-2 space-y-1; }
+.markdown-content ol { @apply list-decimal list-inside text-[13px] mb-2 space-y-1; }
+.markdown-content li { @apply text-[13px] text-slate-300; }
+.markdown-content code {
+  @apply px-1.5 py-0.5 rounded text-xs font-mono text-orange-300;
+  background: rgba(249, 115, 22, 0.1);
+}
+.markdown-content pre {
+  @apply p-3 rounded-lg text-xs font-mono overflow-x-auto mb-2;
+  background: rgba(15, 23, 42, 0.8);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+}
+.markdown-content pre code { @apply bg-transparent p-0 text-slate-300; }
+.markdown-content a { @apply text-orange-400 underline decoration-orange-400/30 hover:decoration-orange-400/60 transition-colors; }
+.markdown-content blockquote {
+  @apply border-l-2 border-orange-500/40 pl-3 italic text-slate-400 mb-2;
+}
+.markdown-content strong { @apply font-semibold text-slate-100; }
+.markdown-content table { @apply w-full text-[13px] mb-2; }
+.markdown-content th {
+  @apply text-left font-semibold p-1.5 text-slate-300;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.4);
+}
+.markdown-content td {
+  @apply p-1.5 text-slate-400;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.2);
+}
+
+/* ─── Animations ─── */
+
 @keyframes voice-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.5); }
   50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
@@ -71,3 +145,92 @@ html, body {
   animation: voice-pulse 1.5s ease-in-out infinite;
 }
 
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.25s ease-out;
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(249, 115, 22, 0.08), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 2s ease-in-out infinite;
+}
+
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-4px); }
+}
+
+.thinking-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #f97316;
+  animation: dot-bounce 1.4s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(1) { animation-delay: 0s; }
+.thinking-dot:nth-child(2) { animation-delay: 0.16s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.32s; }
+
+/* ─── Input field glow effect ─── */
+
+.input-glow:focus-within {
+  box-shadow: 0 0 0 1px rgba(249, 115, 22, 0.4), 0 0 12px rgba(249, 115, 22, 0.08);
+}
+
+/* ─── Button hover lift effect ─── */
+
+.btn-lift {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-lift:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.btn-lift:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* ─── Status dot pulse ─── */
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.status-dot-pulse {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* ─── Utility ─── */
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

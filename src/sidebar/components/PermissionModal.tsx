@@ -22,38 +22,46 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50 p-2">
-      <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-sm shadow-2xl overflow-hidden animate-in slide-in-from-bottom">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end justify-center z-50 p-2">
+      <div className="bg-surface-100 border border-slate-700/50 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden animate-slide-up">
         {/* Header */}
-        <div className="flex items-center gap-2 px-4 py-3 bg-slate-700/50 border-b border-slate-600">
-          <ShieldAlert size={20} style={{ color }} />
-          <span className="font-semibold text-sm text-slate-200">
-            Permission Request
-          </span>
+        <div className="flex items-center gap-2.5 px-4 py-3 gradient-header">
+          <div
+            className="w-8 h-8 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: `${color}20` }}
+          >
+            <ShieldAlert size={18} style={{ color }} />
+          </div>
+          <div>
+            <span className="font-semibold text-sm text-slate-100 block">
+              Permission Request
+            </span>
+            <span className="text-[10px] text-slate-500">Jawad needs your approval</span>
+          </div>
         </div>
 
         {/* Body */}
         <div className="px-4 py-3 space-y-3">
           {/* What */}
-          <div>
-            <div className="text-xs text-slate-400 mb-1">Action</div>
+          <div className="glass-card rounded-xl p-2.5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">Action</div>
             <div className="text-sm text-slate-200 font-medium">
-              Jawad wants to use{' '}
-              <span className="text-orange-400">{request.toolName}</span>
+              Use{' '}
+              <span className="text-orange-400 font-semibold">{request.toolName}</span>
             </div>
           </div>
 
           {/* Where */}
-          <div>
-            <div className="text-xs text-slate-400 mb-1">Site</div>
+          <div className="glass-card rounded-xl p-2.5">
+            <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">Site</div>
             <div className="text-sm text-slate-200">{request.site}</div>
           </div>
 
           {/* Parameters */}
           {Object.keys(request.parameters).length > 0 && (
-            <div>
-              <div className="text-xs text-slate-400 mb-1">Details</div>
-              <div className="bg-slate-900 rounded p-2 text-xs font-mono text-slate-300 max-h-20 overflow-y-auto">
+            <div className="glass-card rounded-xl p-2.5">
+              <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium mb-1">Details</div>
+              <div className="bg-surface/80 rounded-lg p-2 text-[11px] font-mono text-slate-400 max-h-20 overflow-y-auto">
                 {JSON.stringify(request.parameters, null, 2)}
               </div>
             </div>
@@ -61,9 +69,9 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
 
           {/* Permission Level Badge */}
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-400">Level:</span>
+            <span className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">Level:</span>
             <span
-              className="px-2 py-0.5 rounded-full text-xs font-medium text-white"
+              className="px-2.5 py-1 rounded-full text-[10px] font-semibold text-white"
               style={{ backgroundColor: color }}
             >
               {levelLabels[request.permissionLevel] || request.permissionLevel}
@@ -72,18 +80,18 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
         </div>
 
         {/* Actions */}
-        <div className="px-4 py-3 border-t border-slate-700 space-y-2">
+        <div className="px-4 py-3 border-t border-slate-700/30 space-y-2 bg-surface-50/50">
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => decide('allow-once')}
-              className="flex items-center justify-center gap-1 px-3 py-2 bg-green-600 hover:bg-green-500 text-white text-xs font-medium rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all duration-200 btn-lift shadow-sm shadow-emerald-500/20"
             >
               <Check size={14} />
               Allow Once
             </button>
             <button
               onClick={() => decide('allow-site')}
-              className="flex items-center justify-center gap-1 px-3 py-2 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-emerald-700/80 hover:bg-emerald-600 text-white text-xs font-semibold rounded-xl transition-all duration-200 btn-lift"
             >
               <Check size={14} />
               Allow for Site
@@ -92,24 +100,24 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
           <div className="grid grid-cols-3 gap-2">
             <button
               onClick={() => decide('allow-session')}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 bg-slate-600 hover:bg-slate-500 text-slate-200 text-xs rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1 px-2 py-2 bg-surface-400/60 hover:bg-surface-500/60 text-slate-200 text-[11px] font-medium rounded-xl transition-all duration-200"
             >
               <Clock size={12} />
               Session
             </button>
             <button
               onClick={() => decide('deny')}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 bg-red-600/80 hover:bg-red-500 text-white text-xs rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1 px-2 py-2 bg-red-600/70 hover:bg-red-500 text-white text-[11px] font-medium rounded-xl transition-all duration-200"
             >
               <X size={12} />
               Deny
             </button>
             <button
               onClick={() => decide('deny-all')}
-              className="flex items-center justify-center gap-1 px-2 py-1.5 bg-red-800 hover:bg-red-700 text-white text-xs rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1 px-2 py-2 bg-red-800/70 hover:bg-red-700 text-white text-[11px] font-medium rounded-xl transition-all duration-200"
             >
               <Ban size={12} />
-              Deny All
+              Block
             </button>
           </div>
         </div>
@@ -117,4 +125,3 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
     </div>
   );
 }
-

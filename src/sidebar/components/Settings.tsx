@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { DEFAULT_MODELS } from '../../lib/constants';
 import type { LLMActions } from '../hooks/useLLM';
-import { Save, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, Loader2, Sparkles, Server, Key, Cpu, MessageSquareText } from 'lucide-react';
 
 interface SettingsProps {
   llm: LLMActions;
@@ -118,36 +118,56 @@ export function Settings({ llm }: SettingsProps) {
 
   const models = DEFAULT_MODELS[settings.provider] || [];
 
+  const providerInfo: Record<string, { icon: string; name: string; color: string }> = {
+    ollama: { icon: '🦙', name: 'Ollama', color: 'text-emerald-400' },
+    openrouter: { icon: '🌐', name: 'OpenRouter', color: 'text-blue-400' },
+    openai: { icon: '🤖', name: 'OpenAI', color: 'text-purple-400' },
+  };
+
   return (
-    <div className="h-full overflow-y-auto p-3 space-y-4">
-      <div className="text-xs text-slate-400 font-medium uppercase tracking-wide">
-        AI Provider Configuration
+    <div className="h-full overflow-y-auto p-3 space-y-3">
+      {/* Section Header */}
+      <div className="flex items-center gap-2 mb-1">
+        <Sparkles size={14} className="text-orange-400" />
+        <span className="text-xs text-slate-400 font-semibold uppercase tracking-wider">
+          AI Configuration
+        </span>
       </div>
 
-      {/* Provider Selection */}
-      <div>
-        <label className="block text-xs text-slate-400 mb-1">Provider</label>
-        <div className="grid grid-cols-3 gap-1">
-          {['ollama', 'openrouter', 'openai'].map((p) => (
-            <button
-              key={p}
-              onClick={() => handleProviderChange(p)}
-              className={`px-2 py-1.5 rounded text-xs font-medium transition-colors ${
-                settings.provider === p
-                  ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
-                  : 'bg-slate-700 text-slate-400 hover:bg-slate-600 border border-transparent'
-              }`}
-            >
-              {p === 'ollama' ? '🦙 Ollama' : p === 'openrouter' ? '🌐 OpenRouter' : '🤖 OpenAI'}
-            </button>
-          ))}
+      {/* ── Provider Selection ── */}
+      <div className="glass-card rounded-xl p-3 space-y-2.5">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium uppercase tracking-wide">
+          <Server size={11} />
+          Provider
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {(['ollama', 'openrouter', 'openai'] as const).map((p) => {
+            const info = providerInfo[p];
+            return (
+              <button
+                key={p}
+                onClick={() => handleProviderChange(p)}
+                className={`flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-xs font-medium transition-all duration-200 ${
+                  settings.provider === p
+                    ? 'bg-orange-500/15 text-orange-400 border border-orange-500/30 shadow-sm shadow-orange-500/10'
+                    : 'bg-surface-200/60 text-slate-500 hover:bg-surface-300/60 hover:text-slate-300 border border-transparent'
+                }`}
+              >
+                <span className="text-base">{info.icon}</span>
+                <span>{info.name}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* API Key (not needed for Ollama) */}
+      {/* ── API Key ── */}
       {settings.provider !== 'ollama' && (
-        <div>
-          <label className="block text-xs text-slate-400 mb-1">API Key</label>
+        <div className="glass-card rounded-xl p-3 space-y-2 animate-fade-in">
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium uppercase tracking-wide">
+            <Key size={11} />
+            API Key
+          </div>
           <input
             type="password"
             value={settings.apiKey}
@@ -155,39 +175,41 @@ export function Settings({ llm }: SettingsProps) {
               setSettings({ ...settings, apiKey: e.target.value })
             }
             placeholder={
-              settings.provider === 'openrouter'
-                ? 'sk-or-...'
-                : 'sk-...'
+              settings.provider === 'openrouter' ? 'sk-or-...' : 'sk-...'
             }
-            className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+            className="w-full bg-surface-200/80 border border-slate-700/50 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/30 transition-all"
           />
         </div>
       )}
 
-      {/* Base URL */}
-      <div>
-        <label className="block text-xs text-slate-400 mb-1">
+      {/* ── Base URL ── */}
+      <div className="glass-card rounded-xl p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium uppercase tracking-wide">
+          <Server size={11} />
           API Endpoint
-        </label>
+        </div>
         <input
           type="text"
           value={settings.baseUrl}
           onChange={(e) =>
             setSettings({ ...settings, baseUrl: e.target.value })
           }
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-orange-500"
+          className="w-full bg-surface-200/80 border border-slate-700/50 rounded-lg px-3 py-2 text-xs text-slate-200 font-mono focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/30 transition-all"
         />
       </div>
 
-      {/* Model Selection */}
-      <div>
-        <label className="block text-xs text-slate-400 mb-1">Model</label>
+      {/* ── Model Selection ── */}
+      <div className="glass-card rounded-xl p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium uppercase tracking-wide">
+          <Cpu size={11} />
+          Model
+        </div>
         <select
           value={settings.model}
           onChange={(e) =>
             setSettings({ ...settings, model: e.target.value })
           }
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          className="w-full bg-surface-200/80 border border-slate-700/50 rounded-lg px-3 py-2 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/30 transition-all"
         >
           {models.map((m) => (
             <option key={m} value={m}>
@@ -195,7 +217,6 @@ export function Settings({ llm }: SettingsProps) {
             </option>
           ))}
         </select>
-        {/* Custom model input */}
         <input
           type="text"
           value={settings.model}
@@ -203,15 +224,16 @@ export function Settings({ llm }: SettingsProps) {
             setSettings({ ...settings, model: e.target.value })
           }
           placeholder="Or type a custom model name..."
-          className="w-full mt-1 bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+          className="w-full bg-surface-200/80 border border-slate-700/50 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/30 transition-all"
         />
       </div>
 
-      {/* Custom System Prompt */}
-      <div>
-        <label className="block text-xs text-slate-400 mb-1">
-          Custom Instructions (optional)
-        </label>
+      {/* ── Custom System Prompt ── */}
+      <div className="glass-card rounded-xl p-3 space-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium uppercase tracking-wide">
+          <MessageSquareText size={11} />
+          Custom Instructions
+        </div>
         <textarea
           value={settings.customSystemPrompt}
           onChange={(e) =>
@@ -222,15 +244,19 @@ export function Settings({ llm }: SettingsProps) {
           }
           placeholder="e.g., Always respond in bullet points, I prefer budget options..."
           rows={3}
-          className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500 resize-none"
+          className="w-full bg-surface-200/80 border border-slate-700/50 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500/50 focus:border-orange-500/30 resize-none transition-all"
         />
       </div>
 
-      {/* Actions */}
+      {/* ── Actions ── */}
       <div className="flex gap-2">
         <button
           onClick={handleSave}
-          className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white text-xs font-medium rounded-lg transition-colors"
+          className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 btn-lift ${
+            saved
+              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+              : 'gradient-accent text-white shadow-md shadow-orange-500/20'
+          }`}
         >
           {saved ? (
             <>
@@ -247,12 +273,12 @@ export function Settings({ llm }: SettingsProps) {
         <button
           onClick={handleTest}
           disabled={testing}
-          className="flex items-center justify-center gap-1 px-3 py-2 bg-slate-600 hover:bg-slate-500 text-slate-200 text-xs font-medium rounded-lg transition-colors disabled:opacity-50"
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-surface-300/60 hover:bg-surface-400/60 text-slate-300 text-xs font-medium rounded-xl transition-all duration-200 disabled:opacity-40 btn-lift"
         >
           {testing ? (
-            <Loader2 size={14} className="animate-spin" />
+            <Loader2 size={14} className="animate-spin text-orange-400" />
           ) : testResult === 'success' ? (
-            <CheckCircle size={14} className="text-green-400" />
+            <CheckCircle size={14} className="text-emerald-400" />
           ) : testResult === 'error' ? (
             <AlertCircle size={14} className="text-red-400" />
           ) : null}
@@ -260,23 +286,26 @@ export function Settings({ llm }: SettingsProps) {
         </button>
       </div>
 
-      {/* Provider Info */}
-      <div className="bg-slate-800 rounded-lg p-2 text-xs text-slate-400 space-y-1 border border-slate-700">
+      {/* ── Provider Info Card ── */}
+      <div className="glass-card rounded-xl p-3 text-xs text-slate-400 space-y-1.5">
         {settings.provider === 'ollama' && (
           <>
             <p>
-              <strong className="text-slate-300">Local AI:</strong> Install{' '}
+              <strong className="text-slate-200">Local AI</strong> — Install{' '}
               <a
                 href="https://ollama.ai"
                 target="_blank"
                 rel="noreferrer"
-                className="text-orange-400 underline"
+                className="text-orange-400 underline decoration-orange-400/30 hover:decoration-orange-400/60"
               >
                 Ollama
               </a>
-              , then run: <code className="bg-slate-700 px-1 rounded">ollama run llama3</code>
+              , then run:{' '}
+              <code className="px-1.5 py-0.5 bg-surface-200/80 rounded text-orange-300 text-[11px]">
+                ollama run llama3
+              </code>
             </p>
-            <p>
+            <p className="text-slate-500">
               🔒 Data never leaves your machine. Free, no API key needed.
             </p>
           </>
@@ -284,29 +313,28 @@ export function Settings({ llm }: SettingsProps) {
         {settings.provider === 'openrouter' && (
           <>
             <p>
-              <strong className="text-slate-300">Cloud AI:</strong> Get a free key at{' '}
+              <strong className="text-slate-200">Cloud AI</strong> — Get a free key at{' '}
               <a
                 href="https://openrouter.ai"
                 target="_blank"
                 rel="noreferrer"
-                className="text-orange-400 underline"
+                className="text-orange-400 underline decoration-orange-400/30 hover:decoration-orange-400/60"
               >
                 openrouter.ai
               </a>
             </p>
-            <p>Access GPT-4o, Claude, Llama, Gemini and more.</p>
+            <p className="text-slate-500">Access GPT-4o, Claude, Llama, Gemini and more.</p>
           </>
         )}
         {settings.provider === 'openai' && (
           <>
             <p>
-              <strong className="text-slate-300">OpenAI Direct:</strong> Use your OpenAI API key.
+              <strong className="text-slate-200">OpenAI Direct</strong> — Use your OpenAI API key.
             </p>
-            <p>Supports GPT-4o, GPT-4o-mini, and more.</p>
+            <p className="text-slate-500">Supports GPT-4o, GPT-4o-mini, and more.</p>
           </>
         )}
       </div>
     </div>
   );
 }
-

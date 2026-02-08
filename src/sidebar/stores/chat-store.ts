@@ -27,7 +27,7 @@ export const useChatStore = create<ChatState>((set) => ({
       id: 'welcome',
       role: 'assistant',
       content:
-        "**Welcome to Jawad!** Like Jarvis is to Iron Man, I'm your personal AI browser assistant.\n\nI can:\n- **Summarize** any web page\n- **Navigate** and **interact** with sites\n- **Research** across multiple tabs\n- Accept **voice commands**\n\nConfigure your AI provider in **Settings** to get started.",
+        "Hey there! 👋 I'm **Jawad** — your AI browser companion.\n\nHere's what I can do:\n\n🔍 **Summarize** — Digest any page instantly\n🖱️ **Navigate** — Click, fill, and interact\n📚 **Research** — Multi-tab deep dives\n🎙️ **Voice** — Hands-free commands\n\nHead to **Config** to connect your AI provider, then just ask away!",
       timestamp: Date.now(),
     },
   ],
