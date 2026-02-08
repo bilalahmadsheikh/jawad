@@ -76,16 +76,22 @@ export async function transcribeAudio(
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
     if (response.status === 401) {
-      throw new Error('Invalid API key. Check your Settings.');
+      throw new Error(`Invalid API key for ${config.provider}. Check your Settings.`);
+    }
+    if (response.status === 403) {
+      throw new Error(
+        `Transcription forbidden (403). Your ${config.provider} API key may be invalid or have no credits. ` +
+        'Switch to "Browser Speech" mode in Settings (free, no API key needed).'
+      );
     }
     if (response.status === 404) {
       throw new Error(
-        `Your provider does not support voice transcription. ` +
-        'Use OpenAI or OpenRouter, or switch to "Browser Speech" mode.'
+        `Whisper not available on ${config.provider}. ` +
+        'Use OpenAI or OpenRouter, or switch to "Browser Speech" mode in Settings.'
       );
     }
     throw new Error(
-      `Transcription failed: ${errorBody || response.statusText}`
+      `Transcription failed (${response.status}): ${errorBody || response.statusText}. Try "Browser Speech" mode.`
     );
   }
 
@@ -169,6 +175,8 @@ export async function chatCompletion(
     body.tool_choice = 'auto';
   }
 
+  console.log(`[any-llm-router] POST ${url} | provider=${config.provider} model=${config.model} hasKey=${!!config.apiKey} hasTools=${!!body.tools}`);
+
   let response = await fetch(url, {
     method: 'POST',
     headers,
@@ -219,19 +227,22 @@ function friendlyApiError(status: number, body: string, config: LLMConfig): stri
   const short = body.substring(0, 200);
 
   if (status === 401) {
-    return `Invalid API key. Double-check your ${config.provider} key in Settings.`;
+    return `Invalid API key for ${config.provider}. Double-check your key in Settings. (Model: ${config.model}, URL: ${config.baseUrl})`;
   }
   if (status === 403) {
     if (config.provider === 'openrouter') {
-      return 'OpenRouter 403 Forbidden — your API key has no credits or is invalid. Go to https://openrouter.ai/credits to add credits, or generate a new key.';
+      return 'OpenRouter 403 — your API key has no credits or is invalid. Add credits at https://openrouter.ai/credits or generate a new key.';
     }
     if (config.provider === 'openai') {
-      return 'OpenAI 403 Forbidden — your API key is invalid or your account has no billing. Check https://platform.openai.com/account/billing.';
+      return 'OpenAI 403 — your API key is invalid or your account has no billing. Check https://platform.openai.com/account/billing.';
     }
-    return `API returned 403 Forbidden. Check your API key and account status. ${short}`;
+    if (config.provider === 'ollama') {
+      return `Ollama returned 403 Forbidden — this is unexpected. Check that Ollama is running: ollama serve. (URL: ${config.baseUrl}, Model: ${config.model})`;
+    }
+    return `API returned 403 Forbidden. Provider: ${config.provider}, URL: ${config.baseUrl}. Check your API key and account. ${short}`;
   }
   if (status === 404) {
-    return `Model "${config.model}" not found. Check the model name in Settings. ${short}`;
+    return `Model "${config.model}" not found on ${config.provider}. Check the model name in Settings. (URL: ${config.baseUrl})`;
   }
   if (status === 429) {
     return 'Rate limited — too many requests. Wait a moment and try again.';
@@ -239,7 +250,7 @@ function friendlyApiError(status: number, body: string, config: LLMConfig): stri
   if (status >= 500) {
     return `Server error (${status}) from ${config.provider}. The provider may be down. Try again later.`;
   }
-  return `LLM API error (${status}): ${short}`;
+  return `LLM API error (${status}) from ${config.provider}: ${short || 'empty response'}. Check Settings → Config tab. (URL: ${config.baseUrl}, Model: ${config.model})`;
 }
 
 /**

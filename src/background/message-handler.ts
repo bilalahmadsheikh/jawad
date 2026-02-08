@@ -313,6 +313,7 @@ async function handleChatMessage(
   } catch (error: unknown) {
     const msg =
       error instanceof Error ? error.message : 'Unknown error occurred';
+    console.error('[Jawad] Chat error:', msg);
     port.postMessage({
       type: 'CHAT_RESPONSE',
       payload: { content: `Error: ${msg}`, isError: true },
@@ -534,8 +535,9 @@ async function getConfig(): Promise<LLMConfig> {
   const config = data.jawad_config as LLMConfig | undefined;
   if (!config) {
     throw new Error(
-      'LLM not configured. Please open Settings and set up your AI provider.'
+      'LLM not configured. Please open Settings (Config tab) and set up your AI provider.'
     );
   }
+  console.log(`[Jawad] Loaded config: provider=${config.provider} model=${config.model} baseUrl=${config.baseUrl} hasKey=${!!config.apiKey}`);
   return config;
 }
