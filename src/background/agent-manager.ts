@@ -148,6 +148,22 @@ function cleanLLMResponse(text: string): string {
     ''
   );
 
+  // Strip orphaned XML-like function call patterns the model may emit
+  // e.g. <function=search_web>{"query":"..."}</function>
+  cleaned = cleaned.replace(
+    /<function=[a-z_]+>[\s\S]*?<\/function>/gi,
+    ''
+  );
+
+  // Strip markdown-wrapped tool calls (```xml ... ```)
+  cleaned = cleaned.replace(
+    /```(?:xml|tool_call|json)?\s*\n\s*<[a-z_]+[\s\S]*?>\s*\n\s*```/gi,
+    ''
+  );
+
+  // Remove excessive blank lines left after stripping
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
   return cleaned.trim();
 }
 

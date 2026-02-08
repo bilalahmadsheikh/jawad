@@ -47,42 +47,42 @@ export function readPage(): PageResult {
     extractInteractiveElements()
   );
 
+  // PRIMARY: structured DOM tree-walk — captures headings, images (alt text),
+  // links, text on ALL page types (shopping, dashboards, search, etc.)
+  const structured = buildStructuredSnapshot();
+
+  // SUPPLEMENT: Readability for article-like pages (blogs, docs, news)
+  let readabilityMd = '';
   try {
     const docClone = document.cloneNode(true) as Document;
     const article = new Readability(docClone).parse();
-
-    if (article && article.textContent && article.textContent.length > 50) {
-      const turndown = new TurndownService({
+    if (article?.textContent && article.textContent.length > 300) {
+      const td = new TurndownService({
         headingStyle: 'atx',
         codeBlockStyle: 'fenced',
       });
-      turndown.addRule('removeScripts', {
+      td.addRule('removeScripts', {
         filter: ['script', 'style', 'noscript'],
         replacement: () => '',
       });
-
-      const markdown = turndown.turndown(article.content);
-
-      return {
-        title: article.title || document.title,
-        url: window.location.href,
-        markdown: markdown.substring(0, 6000),
-        product,
-        interactiveElements,
-        source: 'readability',
-      };
+      readabilityMd = td.turndown(article.content).substring(0, 6000);
     }
-  } catch (e) {
-    console.warn('[FoxAgent] Readability failed, using fallback:', e);
+  } catch {
+    // Readability not applicable for this page type
   }
+
+  // Use Readability only if it captured significantly more than the
+  // structured snapshot (i.e. it's a real article page).
+  const useReadability =
+    readabilityMd.length > structured.length * 2 && readabilityMd.length > 500;
 
   return {
     title: document.title,
     url: window.location.href,
-    markdown: extractBasicContent(),
+    markdown: (useReadability ? readabilityMd : structured).substring(0, 8000),
     product,
     interactiveElements,
-    source: 'fallback',
+    source: useReadability ? 'readability' : 'fallback',
   };
 }
 
@@ -572,63 +572,138 @@ function formatInteractiveElements(elements: InteractiveEl[]): string {
   return sections.join('\n');
 }
 
-// ---------- Fallback extraction ----------
+// ---------- Structured DOM snapshot ----------
+// Walks the visible DOM tree and produces a rich markdown snapshot.
+// Captures headings, images (alt text), links (text + URL), and text
+// that Readability strips on non-article pages (Amazon, Google, dashboards).
 
-function extractBasicContent(): string {
-  const parts: string[] = [];
-  parts.push(`# ${document.title}\n`);
+function buildStructuredSnapshot(): string {
+  const lines: string[] = [];
+  const seen = new Set<string>();
+  let budget = 6500; // character budget
 
-  const selectors = [
-    'main',
-    'article',
-    '[role="main"]',
-    '#content',
-    '.content',
-    '#main',
-    '.main',
-  ];
+  emit(`# ${document.title}`);
 
-  let container: Element | null = null;
-  for (const sel of selectors) {
-    container = document.querySelector(sel);
-    if (container) break;
+  const desc = getMeta('description') || getMeta('og:description');
+  if (desc && desc.length > 10) emit(desc.substring(0, 300));
+
+  const root =
+    document.querySelector(
+      'main, [role="main"], #content, .content, #main'
+    ) || document.body;
+
+  walkTree(root, 0);
+
+  return lines.join('\n');
+
+  // ---- scoped helpers ----
+
+  function emit(text: string): boolean {
+    if (budget <= 0) return false;
+    lines.push(text);
+    budget -= text.length + 1;
+    return true;
   }
-  if (!container) container = document.body;
 
-  // Extract headings
-  container.querySelectorAll('h1, h2, h3, h4').forEach((h) => {
-    const level = parseInt(h.tagName[1]);
-    const prefix = '#'.repeat(level);
-    const text = h.textContent?.trim();
-    if (text) parts.push(`${prefix} ${text}`);
-  });
+  function unique(text: string, ns: string): boolean {
+    const key = ns + text.toLowerCase().substring(0, 80);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }
 
-  // Extract paragraphs
-  container.querySelectorAll('p').forEach((p) => {
-    const text = p.textContent?.trim();
-    if (text && text.length > 20) parts.push(text);
-  });
+  function ws(s: string | null | undefined): string {
+    return (s || '').replace(/\s+/g, ' ').trim();
+  }
 
-  // Extract list items
-  container.querySelectorAll('li').forEach((li) => {
-    const text = li.textContent?.trim();
-    if (text && text.length > 10) parts.push(`- ${text.substring(0, 200)}`);
-  });
+  function walkTree(parent: Element, depth: number): void {
+    if (budget <= 0 || depth > 12) return;
 
-  // Extract key links
-  const linkTexts: string[] = [];
-  container.querySelectorAll('a[href]').forEach((a) => {
-    const text = a.textContent?.trim();
-    if (text && text.length > 2 && text.length < 100) {
-      linkTexts.push(`[${text}](${(a as HTMLAnchorElement).href})`);
+    for (const child of parent.children) {
+      if (budget <= 0) return;
+
+      const el = child as HTMLElement;
+      const tag = child.tagName?.toLowerCase();
+      if (!tag) continue;
+
+      // Skip non-content elements
+      if (
+        [
+          'script', 'style', 'noscript', 'svg', 'path',
+          'link', 'meta', 'template', 'iframe', 'canvas',
+        ].includes(tag)
+      ) continue;
+
+      // Skip hidden
+      if (el.hidden || el.getAttribute('aria-hidden') === 'true') continue;
+
+      // Skip primary navigation and footer (noise on most pages)
+      if (tag === 'nav' || tag === 'footer') continue;
+
+      // Visibility check (expensive — only for shallow depth)
+      if (depth < 5) {
+        try {
+          if (!isVisible(el)) continue;
+        } catch {
+          continue;
+        }
+      }
+
+      // ── Headings ──
+      if (/^h[1-6]$/.test(tag)) {
+        const t = ws(child.textContent);
+        if (t && t.length >= 2 && unique(t, 'h'))
+          emit(`\n${'#'.repeat(parseInt(tag[1]))} ${t}`);
+        continue;
+      }
+
+      // ── Images with alt text (critical for product pages) ──
+      if (tag === 'img') {
+        const alt = el.getAttribute('alt')?.trim();
+        if (alt && alt.length > 2 && unique(alt, 'i'))
+          emit(`[Image: ${alt.substring(0, 120)}]`);
+        continue;
+      }
+
+      // ── Links — extract text + inner img alt, don't recurse ──
+      if (tag === 'a') {
+        const href = (el as HTMLAnchorElement).href;
+        if (!href || href === '#') {
+          walkTree(child, depth + 1);
+          continue;
+        }
+        const imgAlt = el.querySelector('img')?.getAttribute('alt')?.trim();
+        const t = ws(child.textContent);
+
+        if (imgAlt && imgAlt.length > 2 && unique(imgAlt, 'a'))
+          emit(`- [${imgAlt.substring(0, 80)}](${href})`);
+        else if (t && t.length > 1 && t.length < 100 && unique(t, 'a'))
+          emit(`- [${t}](${href})`);
+        continue;
+      }
+
+      // ── Text-bearing elements (capture full text, no recurse) ──
+      if (
+        ['p', 'blockquote', 'figcaption', 'td', 'th', 'dd', 'dt', 'summary'].includes(tag)
+      ) {
+        const t = ws(child.textContent);
+        if (t && t.length > 3 && t.length < 300 && unique(t, 't'))
+          emit(t);
+        continue;
+      }
+
+      // ── Leaf elements (no child elements) ──
+      if (child.children.length === 0) {
+        const t = ws(child.textContent);
+        if (t && t.length > 2 && t.length < 200 && unique(t, 't'))
+          emit(t);
+        continue;
+      }
+
+      // ── Container — recurse ──
+      walkTree(child, depth + 1);
     }
-  });
-  if (linkTexts.length > 0) {
-    parts.push('\n**Links:**');
-    parts.push(...linkTexts.slice(0, 20));
   }
-
-  return parts.join('\n\n').substring(0, 6000);
 }
 
 // ---------- Helper ----------

@@ -144,7 +144,7 @@ async function handleChatMessage(
 
           if (pageContent.markdown) {
             parts.push(
-              `\nPAGE CONTENT:\n${pageContent.markdown.substring(0, 3000)}`
+              `\nPAGE CONTENT:\n${pageContent.markdown.substring(0, 5000)}`
             );
           }
 
@@ -174,39 +174,96 @@ async function handleChatMessage(
       }
     }
 
-    // ── Fast path: page-summarize requests ──────────────────────
-    // Use a direct LLM call (no tools) so the model can't
-    // hallucinate tool calls like <summarize_page/>.
-    const trimmed = content.trim().toLowerCase().replace(/[.!?]+$/, '').trim();
+    // ── Follow-up intent detection ────────────────────────────────
+    // Short affirmative / "more detail" messages lose context.
+    // Inject the previous assistant response so the LLM knows what
+    // "yes" or "tell me more" refers to.
+    const lowerContent = content.trim().toLowerCase();
+    const isAffirmative =
+      /^\s*(yes|yeah|yep|sure|ok|okay|go\s*ahead|do\s*it|please|proceed|continue|go\s*for\s*it|yea|y|alright)\s*[.!]*\s*$/i.test(
+        content
+      );
+    const isMoreDetail =
+      /^\s*(tell\s*me\s*more|more\s*detail|elaborate|expand|go\s*deeper|what\s*else|more\s*info|details?|explain\s*more)\s*[.!?]*\s*$/i.test(
+        content
+      );
+    const isNegative =
+      /^\s*(no|nah|nope|never\s*mind|cancel|stop|n)\s*[.!]*\s*$/i.test(
+        content
+      );
+
+    if (
+      (isAffirmative || isMoreDetail || isNegative) &&
+      conversationHistory.length > 0
+    ) {
+      const lastAssistant = [...conversationHistory]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+      if (lastAssistant?.content) {
+        const instruction = isAffirmative
+          ? 'The user confirmed YES. Execute the action you proposed immediately using the appropriate tools (navigate, search_web, click_element, etc.).'
+          : isMoreDetail
+            ? 'The user wants MORE DETAIL. Use tools (search_web, scroll_page, read_page) to find additional information beyond what was provided.'
+            : 'The user declined. Acknowledge briefly and ask what else they need.';
+
+        pageContext += `\n\n--- FOLLOW-UP CONTEXT ---\nYour previous response was: "${lastAssistant.content.substring(0, 600)}"\nUser replied: "${content}"\nInstruction: ${instruction}`;
+      }
+    }
+
+    // ── Intent classification ─────────────────────────────────
+    // Determine if the user wants a page Q&A (answerable from context)
+    // or an action (needs the full agent loop with tool calling).
+    const trimmed = lowerContent.replace(/[.!?]+$/, '').trim();
+
+    // Action intents — these MUST go through the agent loop
+    const isActionIntent =
+      /\b(search|find\s+(me|for|a|the|cheaper|alternative|similar)|look\s+up|navigate|go\s+to|open|click|press|tap|fill|type|enter|compare|buy|order|purchase|checkout|add\s+to\s+cart|draft|email|send|scroll|sign\s+in|log\s+in|register|sign\s+up)\b/i.test(
+        content
+      );
+
+    // Summarize intents
     const isPageSummarize =
-      /^(please\s+|can you\s+)?(summarize|summarise|sum\s+up|summary)(\s+(this|the|it|current))?(\s+(page|site|website|tab))?$/.test(
+      /^(please\s+|can you\s+)?(summarize|summarise|sum\s+up|summary|give\s+me\s+a\s+summary|tldr|tl;?\s*dr)(\s+of)?(\s+(this|the|it|current))?(\s+(page|site|website|tab|article|content))?$/i.test(
         trimmed
       );
 
-    if (isPageSummarize && pageContext) {
-      const summaryResponse = await chatCompletion(config, {
+    // Page Q&A intents — questions about the current page content
+    const isPageQA =
+      /^(what('?s|\s+is|\s+are|\s+does)|who('?s|\s+is|\s+are)|where('?s|\s+is|\s+are)|how\s+(much|many|does|is|are)|tell\s+me\s+about|describe|explain|list|show\s+me|what\s+do\s+(you|i)\s+see|what('?s| is)\s+(on|in)\s+(this|the)|is\s+(this|there|it))\b/i.test(
+        trimmed
+      ) && !isActionIntent;
+
+    // ── Fast path: page-context Q&A (summarize, describe, etc.) ──
+    // Use a direct LLM call (no tools) so the model can't
+    // hallucinate tool calls like <summarize_page/>.
+    if ((isPageSummarize || isPageQA) && pageContext && !isActionIntent) {
+      const systemContent = isPageSummarize
+        ? 'You are FoxAgent, a helpful browser assistant. Summarize the page content concisely using bullet points for key information. Be brief but thorough.'
+        : 'You are FoxAgent, a helpful browser assistant. Answer the user\'s question using ONLY the provided page context. If the answer is not in the context, say "I don\'t see that information on this page." Be concise and use bullet points.';
+
+      const qaResponse = await chatCompletion(config, {
         messages: [
+          { role: 'system', content: systemContent },
           {
-            role: 'system',
-            content:
-              'You are FoxAgent, a helpful browser assistant. Summarize the page content concisely using bullet points for key information. Be brief but thorough.',
+            role: 'user',
+            content: `${content}\n\n${pageContext}`,
           },
-          { role: 'user', content: `Summarize this page:\n${pageContext}` },
         ],
+        temperature: 0.3, // Low temperature for factual grounding
       });
 
-      const summary =
-        summaryResponse.choices[0]?.message?.content ||
-        'Could not generate summary.';
+      const answer =
+        qaResponse.choices[0]?.message?.content ||
+        'Could not generate a response.';
 
       conversationHistory.push(
         { role: 'user', content },
-        { role: 'assistant', content: summary }
+        { role: 'assistant', content: answer }
       );
 
       port.postMessage({
         type: 'CHAT_RESPONSE',
-        payload: { content: summary },
+        payload: { content: answer },
       });
       return;
     }
@@ -331,6 +388,7 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
           content: `Summarize this page:\n\nTitle: ${pageContent.title || 'Unknown'}\nURL: ${currentTab.url}\n\nContent:\n${pageContent.markdown.substring(0, 5000)}`,
         },
       ],
+      temperature: 0.3, // Low temperature for factual summarization
     });
 
     const summary =
