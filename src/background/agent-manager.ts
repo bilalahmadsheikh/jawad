@@ -1,7 +1,5 @@
 // ============================================================
 // Agent Manager - LLM tool-calling loop
-// Supports BOTH proper OpenAI function calls AND XML-style
-// fallback for models that don't support tool_calls natively.
 // ============================================================
 
 import { chatCompletion } from '../lib/any-llm-router';
@@ -17,86 +15,6 @@ type PermissionRequester = (
   permissionLevel: string,
   port: browser.Port
 ) => Promise<string>;
-
-interface ParsedToolCall {
-  id: string;
-  name: string;
-  args: Record<string, unknown>;
-}
-
-// -------- XML fallback parser --------
-
-const TOOL_NAMES = TOOLS.map((t) => t.name);
-const TOOL_NAME_PATTERN = TOOL_NAMES.join('|');
-
-/**
- * Parse XML-style tool calls that some LLMs produce when they don't
- * support the OpenAI function-calling format.
- *
- * Handles patterns like:
- *   <navigate url="https://example.com" newTab="true"></navigate>
- *   <read_page />
- *   <search_web query="cheap speakers" />
- *   <fill_form selector="search" text="hoodies" submit="true"></fill_form>
- */
-function parseXMLToolCalls(text: string): ParsedToolCall[] {
-  const calls: ParsedToolCall[] = [];
-
-  // Match both  <tool .../>  and  <tool ...>...</tool>
-  const regex = new RegExp(
-    `<(${TOOL_NAME_PATTERN})\\b([^>]*?)\\s*(?:/>|>([\\s\\S]*?)<\\/\\1\\s*>)`,
-    'gi'
-  );
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(text)) !== null) {
-    const name = match[1];
-    const attrsStr = match[2] || '';
-    const args: Record<string, unknown> = {};
-
-    // Parse key="value" or key='value' attributes
-    const attrRegex = /(\w+)\s*=\s*"([^"]*)"|(\w+)\s*=\s*'([^']*)'/g;
-    let attrMatch: RegExpExecArray | null;
-    while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
-      const key = attrMatch[1] || attrMatch[3];
-      const rawVal = attrMatch[2] ?? attrMatch[4] ?? '';
-
-      // Coerce known boolean / numeric values
-      if (rawVal === 'true') args[key] = true;
-      else if (rawVal === 'false') args[key] = false;
-      else if (rawVal !== '' && !isNaN(Number(rawVal))) args[key] = Number(rawVal);
-      else args[key] = rawVal;
-    }
-
-    // Validate tool name exists (case-insensitive check)
-    const validName = TOOL_NAMES.find(
-      (n) => n.toLowerCase() === name.toLowerCase()
-    );
-    if (validName) {
-      calls.push({
-        id: `xmlcall_${generateId()}`,
-        name: validName,
-        args,
-      });
-    }
-  }
-
-  return calls;
-}
-
-/**
- * Remove the XML tool-call tags from the LLM text so the user
- * sees only the natural-language portions of the response.
- */
-function stripXMLToolTags(text: string): string {
-  const regex = new RegExp(
-    `<(${TOOL_NAME_PATTERN})\\b[^>]*?\\s*(?:/>|>[\\s\\S]*?<\\/\\1\\s*>)`,
-    'gi'
-  );
-  return text.replace(regex, '').trim();
-}
-
-// -------- Main agent loop --------
 
 /**
  * Run the agent loop: send messages to LLM, handle tool calls, repeat.
@@ -116,19 +34,34 @@ export async function runAgentLoop(
   const maxIterations = 10;
   let iterations = 0;
 
-  // Get current active tab
-  const tabs = await browser.tabs.query({
+  // Get current active tab (initial values; refreshed each iteration)
+  const initialTabs = await browser.tabs.query({
     active: true,
     currentWindow: true,
   });
-  const currentTab = tabs[0];
-  let tabId = currentTab?.id;
-  const site = currentTab?.url
-    ? new URL(currentTab.url).hostname
+  let tabId = initialTabs[0]?.id;
+  let site = initialTabs[0]?.url
+    ? new URL(initialTabs[0].url).hostname
     : 'unknown';
 
   while (iterations < maxIterations) {
     iterations++;
+
+    // Refresh site & tabId - navigation tools may have changed the active tab/URL
+    try {
+      const freshTabs = await browser.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+      if (freshTabs[0]?.url) {
+        site = new URL(freshTabs[0].url).hostname;
+      }
+      if (freshTabs[0]?.id) {
+        tabId = freshTabs[0].id;
+      }
+    } catch {
+      // keep previous values
+    }
 
     const response = await chatCompletion(config, {
       messages,
@@ -142,28 +75,117 @@ export async function runAgentLoop(
 
     const message = choice.message;
 
-    // ----- Route A: proper function calls from the API -----
+    // Check if LLM wants to call tools
     if (message.tool_calls && message.tool_calls.length > 0) {
+      // Add assistant message with tool calls to conversation
       messages.push({
         role: 'assistant',
         content: message.content,
         tool_calls: message.tool_calls,
       });
 
+      // Execute each tool call
       for (const toolCall of message.tool_calls) {
-        const result = await processToolCall(
-          { id: toolCall.id, name: toolCall.function.name, args: safeJsonParse(toolCall.function.arguments) },
-          site,
-          tabId,
-          port,
-          requestPermission
-        );
-
-        // If a navigate/search_web happened, update tabId for subsequent calls
-        if (typeof result === 'object' && result !== null && 'tabId' in result) {
-          tabId = (result as { tabId: number }).tabId;
+        const toolName = toolCall.function.name;
+        let args: Record<string, unknown>;
+        try {
+          args = JSON.parse(toolCall.function.arguments);
+        } catch {
+          args = {};
         }
 
+        // Find tool definition for permission level
+        const toolDef = TOOLS.find((t) => t.name === toolName);
+        const permLevel: PermissionLevel = toolDef?.permission || 'interact';
+
+        // Check Harbor permissions
+        const policy = await getHarborPolicy();
+        const decision = checkPermission(policy, toolName, permLevel, site);
+
+        let result: unknown;
+
+        if (decision === 'auto-approve') {
+          // Log auto-approved action
+          port.postMessage({
+            type: 'ACTION_LOG_UPDATE',
+            payload: {
+              id: generateId(),
+              timestamp: Date.now(),
+              toolName,
+              parameters: args,
+              site,
+              permissionLevel: permLevel,
+              decision: 'auto-approved',
+              result: 'success',
+            },
+          });
+
+          result = await executeToolAction(toolName, args, tabId);
+        } else if (decision === 'deny') {
+          // Log denied action
+          port.postMessage({
+            type: 'ACTION_LOG_UPDATE',
+            payload: {
+              id: generateId(),
+              timestamp: Date.now(),
+              toolName,
+              parameters: args,
+              site,
+              permissionLevel: permLevel,
+              decision: 'deny',
+              result: 'denied',
+            },
+          });
+
+          result = {
+            error: `Tool '${toolName}' is blocked by Harbor policy for ${site}`,
+          };
+        } else {
+          // Ask the user
+          const userDecision = await requestPermission(
+            toolName,
+            args,
+            site,
+            permLevel,
+            port
+          );
+
+          // Log the decision
+          port.postMessage({
+            type: 'ACTION_LOG_UPDATE',
+            payload: {
+              id: generateId(),
+              timestamp: Date.now(),
+              toolName,
+              parameters: args,
+              site,
+              permissionLevel: permLevel,
+              decision: userDecision,
+              result: userDecision.startsWith('allow') ? 'success' : 'denied',
+            },
+          });
+
+          if (userDecision.startsWith('allow')) {
+            // Update policy if user chose to remember
+            if (
+              userDecision === 'allow-site' ||
+              userDecision === 'allow-session'
+            ) {
+              await updateHarborPolicyForDecision(
+                toolName,
+                site,
+                userDecision
+              );
+            }
+            result = await executeToolAction(toolName, args, tabId);
+          } else {
+            result = {
+              error: `User denied permission for '${toolName}' on ${site}`,
+            };
+          }
+        }
+
+        // Add tool result to conversation
         messages.push({
           role: 'tool',
           content: JSON.stringify(result),
@@ -171,158 +193,13 @@ export async function runAgentLoop(
         });
       }
 
-      continue; // back to the LLM for the next turn
+      // Continue the loop to get the next LLM response
+      continue;
     }
 
-    // ----- Route B: XML fallback for models without function calling -----
-    const textContent = message.content || '';
-    const xmlCalls = parseXMLToolCalls(textContent);
-
-    if (xmlCalls.length > 0) {
-      // Strip XML tags so only the natural-language portion remains
-      const cleanedText = stripXMLToolTags(textContent);
-
-      // Send the cleaned text as an intermediate chat bubble so the user
-      // can see what the agent is thinking
-      if (cleanedText.length > 0) {
-        port.postMessage({
-          type: 'CHAT_RESPONSE',
-          payload: { content: cleanedText },
-        });
-      }
-
-      // Execute every parsed tool call sequentially
-      const toolResults: string[] = [];
-      for (const call of xmlCalls) {
-        const result = await processToolCall(
-          call,
-          site,
-          tabId,
-          port,
-          requestPermission
-        );
-
-        if (typeof result === 'object' && result !== null && 'tabId' in result) {
-          tabId = (result as { tabId: number }).tabId;
-        }
-
-        toolResults.push(JSON.stringify(result));
-      }
-
-      // Feed tool results back to the LLM so it can summarise
-      messages.push({
-        role: 'assistant',
-        content: textContent,
-      });
-      messages.push({
-        role: 'user',
-        content:
-          `Tool results:\n${toolResults.join('\n')}\n\n` +
-          `Based on these tool results, provide a helpful answer to the user. Do NOT use XML tags. Respond in plain text / markdown.`,
-      });
-
-      continue; // LLM will now summarize
-    }
-
-    // ----- No tool calls at all — final text response -----
-    return textContent;
+    // No tool calls - LLM responded with text. We're done.
+    return message.content || '';
   }
 
   return 'Agent reached maximum iterations. Please try a simpler request.';
-}
-
-// -------- Helpers --------
-
-function safeJsonParse(raw: string): Record<string, unknown> {
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Process a single tool call: check permissions, execute, log.
- */
-async function processToolCall(
-  call: ParsedToolCall,
-  site: string,
-  tabId: number | undefined,
-  port: browser.Port,
-  requestPermission: PermissionRequester
-): Promise<unknown> {
-  const toolDef = TOOLS.find((t) => t.name === call.name);
-  const permLevel: PermissionLevel = toolDef?.permission || 'interact';
-
-  // Check Harbor permissions
-  const policy = await getHarborPolicy();
-  const decision = checkPermission(policy, call.name, permLevel, site);
-
-  if (decision === 'auto-approve') {
-    port.postMessage({
-      type: 'ACTION_LOG_UPDATE',
-      payload: {
-        id: generateId(),
-        timestamp: Date.now(),
-        toolName: call.name,
-        parameters: call.args,
-        site,
-        permissionLevel: permLevel,
-        decision: 'auto-approved',
-        result: 'success',
-      },
-    });
-
-    return await executeToolAction(call.name, call.args, tabId);
-  }
-
-  if (decision === 'deny') {
-    port.postMessage({
-      type: 'ACTION_LOG_UPDATE',
-      payload: {
-        id: generateId(),
-        timestamp: Date.now(),
-        toolName: call.name,
-        parameters: call.args,
-        site,
-        permissionLevel: permLevel,
-        decision: 'deny',
-        result: 'denied',
-      },
-    });
-
-    return { error: `Tool '${call.name}' is blocked by Harbor policy for ${site}` };
-  }
-
-  // Ask the user
-  const userDecision = await requestPermission(
-    call.name,
-    call.args,
-    site,
-    permLevel,
-    port
-  );
-
-  port.postMessage({
-    type: 'ACTION_LOG_UPDATE',
-    payload: {
-      id: generateId(),
-      timestamp: Date.now(),
-      toolName: call.name,
-      parameters: call.args,
-      site,
-      permissionLevel: permLevel,
-      decision: userDecision,
-      result: userDecision.startsWith('allow') ? 'success' : 'denied',
-    },
-  });
-
-  if (userDecision.startsWith('allow')) {
-    if (userDecision === 'allow-site' || userDecision === 'allow-session') {
-      await updateHarborPolicyForDecision(call.name, site, userDecision);
-    }
-    return await executeToolAction(call.name, call.args, tabId);
-  }
-
-  return { error: `User denied permission for '${call.name}' on ${site}` };
 }
