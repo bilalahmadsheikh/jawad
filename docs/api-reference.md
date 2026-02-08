@@ -21,7 +21,7 @@ FoxAgent uses Firefox extension messaging APIs for inter-component communication
 const port = browser.runtime.connect({ name: 'sidebar' });
 
 // Send messages
-port.postMessage({ type: 'CHAT', content: 'Hello' });
+port.postMessage({ type: 'CHAT_MESSAGE', payload: { content: 'Hello' } });
 
 // Receive messages
 port.onMessage.addListener((msg) => { /* ... */ });
@@ -29,25 +29,27 @@ port.onMessage.addListener((msg) => { /* ... */ });
 
 ### Sidebar → Background
 
-#### `CHAT`
+#### `CHAT_MESSAGE`
 Send a chat message for AI processing.
 ```json
 {
-  "type": "CHAT",
-  "content": "Find me a cheaper alternative to this product"
+  "type": "CHAT_MESSAGE",
+  "payload": {
+    "content": "Find me a cheaper alternative to this product"
+  }
 }
 ```
 
-#### `SUMMARIZE`
+#### `SUMMARIZE_PAGE`
 Request a page summary.
 ```json
 {
-  "type": "SUMMARIZE"
+  "type": "SUMMARIZE_PAGE"
 }
 ```
 
 #### `START_VOICE`
-Begin voice capture.
+Begin voice capture (relayed to content script as `START_VOICE_INPUT`).
 ```json
 {
   "type": "START_VOICE"
@@ -55,7 +57,7 @@ Begin voice capture.
 ```
 
 #### `STOP_VOICE`
-End voice capture.
+End voice capture (relayed to content script as `STOP_VOICE_INPUT`).
 ```json
 {
   "type": "STOP_VOICE"
@@ -68,12 +70,13 @@ Respond to a permission request.
 {
   "type": "PERMISSION_RESPONSE",
   "payload": {
-    "allowed": true,
-    "remember": false,
-    "requestId": "req-123"
+    "requestId": "perm_123456_abc",
+    "decision": "allow-once"
   }
 }
 ```
+
+Valid decisions: `"allow-once"`, `"allow-site"`, `"allow-session"`, `"deny"`, `"deny-all"`
 
 #### `SAVE_SETTINGS`
 Save LLM provider configuration.
@@ -89,32 +92,38 @@ Save LLM provider configuration.
 }
 ```
 
-#### `LOAD_SETTINGS`
+#### `GET_SETTINGS`
 Request saved settings.
 ```json
 {
-  "type": "LOAD_SETTINGS"
+  "type": "GET_SETTINGS"
 }
 ```
 
-#### `SAVE_POLICY`
-Save Harbor permission policy.
+#### `START_WORKFLOW`
+Start a Research Mode multi-step workflow.
 ```json
 {
-  "type": "SAVE_POLICY",
+  "type": "START_WORKFLOW",
   "payload": {
-    "defaultLevel": "ask",
-    "siteOverrides": {},
-    "toolOverrides": { "read_page": "auto-approve" }
+    "intent": "Compare prices for Nike Air Max across 3 stores"
   }
 }
 ```
 
-#### `LOAD_POLICY`
-Request saved Harbor policy.
+#### `CANCEL_WORKFLOW`
+Cancel the currently running workflow.
 ```json
 {
-  "type": "LOAD_POLICY"
+  "type": "CANCEL_WORKFLOW"
+}
+```
+
+#### `CLEAR_HISTORY`
+Clear the conversation history in the background script.
+```json
+{
+  "type": "CLEAR_HISTORY"
 }
 ```
 
@@ -126,22 +135,27 @@ Final AI response after processing.
 {
   "type": "CHAT_RESPONSE",
   "payload": {
-    "content": "I found 3 alternatives under $50..."
+    "content": "I found 3 alternatives under $50...",
+    "isError": false
   }
 }
 ```
 
-#### `ACTION_UPDATE`
+#### `ACTION_LOG_UPDATE`
 Tool execution log entry.
 ```json
 {
-  "type": "ACTION_UPDATE",
+  "type": "ACTION_LOG_UPDATE",
   "payload": {
-    "tool": "search_web",
-    "args": { "query": "cheap hoodies" },
-    "result": "Found 10 results...",
-    "success": true,
-    "timestamp": 1707400000000
+    "id": "log_123",
+    "timestamp": 1707400000000,
+    "toolName": "search_web",
+    "parameters": { "query": "cheap hoodies" },
+    "site": "google.com",
+    "permissionLevel": "navigate",
+    "decision": "auto-approved",
+    "result": "success",
+    "details": "Found 10 results..."
   }
 }
 ```
@@ -152,36 +166,32 @@ Request user permission for a tool action.
 {
   "type": "PERMISSION_REQUEST",
   "payload": {
-    "requestId": "req-123",
-    "tool": "click_element",
+    "id": "perm_123456_abc",
+    "toolName": "click_element",
+    "parameters": { "selector": "button.add-to-cart" },
     "site": "amazon.com",
-    "args": { "selector": "button.add-to-cart" },
-    "permission": "interact"
+    "permissionLevel": "interact",
+    "reason": "FoxAgent wants to use 'click_element' on amazon.com",
+    "timestamp": 1707400000000
   }
 }
 ```
 
-#### `SETTINGS_LOADED`
-Return saved settings.
+#### `SETTINGS`
+Return saved settings (response to `GET_SETTINGS`).
 ```json
 {
-  "type": "SETTINGS_LOADED",
+  "type": "SETTINGS",
   "payload": {
     "provider": "ollama",
     "model": "llama3.1",
+    "apiKey": "",
     "baseUrl": "http://localhost:11434/v1"
   }
 }
 ```
 
-#### `POLICY_LOADED`
-Return saved Harbor policy.
-```json
-{
-  "type": "POLICY_LOADED",
-  "payload": { "defaultLevel": "ask", "siteOverrides": {}, "toolOverrides": {} }
-}
-```
+Payload is `null` if no settings have been saved yet.
 
 #### `VOICE_RESULT`
 Voice transcription result.
@@ -215,15 +225,34 @@ Voice capture error.
 ```
 
 #### `WORKFLOW_UPDATE`
-Workflow progress update.
+Workflow progress update. Payload is a full `WorkflowPlan` object.
 ```json
 {
   "type": "WORKFLOW_UPDATE",
   "payload": {
-    "step": 2,
-    "totalSteps": 5,
+    "id": "wf_123",
+    "intent": "Compare prices for Nike Air Max",
+    "steps": [
+      {
+        "id": "step_0_abc",
+        "agent": "SearchAgent",
+        "task": "Search Amazon for Nike Air Max",
+        "site": "https://www.google.com/search?q=...",
+        "permissions": ["read-only", "navigate"],
+        "status": "completed",
+        "result": "Found Nike Air Max at $150"
+      },
+      {
+        "id": "step_1_def",
+        "agent": "SearchAgent",
+        "task": "Search eBay for Nike Air Max",
+        "site": "https://www.google.com/search?q=...",
+        "permissions": ["read-only", "navigate"],
+        "status": "running"
+      }
+    ],
     "status": "running",
-    "description": "Searching eBay for prices..."
+    "createdAt": 1707400000000
   }
 }
 ```
@@ -313,7 +342,7 @@ Stop voice capture.
 
 ## Content Script → Background Messages
 
-Sent via `browser.runtime.sendMessage(message)`. These are one-way (fire-and-forget).
+Sent via `browser.runtime.sendMessage(message)`. These are one-way (fire-and-forget), relayed to the sidebar port by the background script.
 
 #### `VOICE_RESULT`
 ```json
@@ -344,19 +373,20 @@ Notifies that page content has been extracted and is ready.
 interface LLMConfig {
   provider: 'openai' | 'openrouter' | 'ollama';
   model: string;
-  apiKey?: string;
-  baseUrl?: string;
+  apiKey: string;
+  baseUrl: string;
 }
 
 interface ChatCompletionOptions {
   messages: Array<{
     role: 'system' | 'user' | 'assistant' | 'tool';
-    content: string;
+    content: string | null;
+    tool_calls?: unknown[];
     tool_call_id?: string;
   }>;
-  tools?: ToolDefinition[];
+  tools?: ToolDefinition[];  // OpenAI-format function definitions
   temperature?: number;
-  maxTokens?: number;
+  max_tokens?: number;       // Defaults to 4096
 }
 
 interface ChatCompletionResponse {
@@ -377,6 +407,8 @@ interface ChatCompletionResponse {
 }
 ```
 
+If a provider rejects the `tools` parameter (status 400/422 with tool-related error text), the router automatically retries without tools, enabling the XML fallback in `agent-manager.ts`.
+
 ## Tool Registry (`src/lib/mcp-tool-registry.ts`)
 
 ### `TOOLS` Array
@@ -391,20 +423,20 @@ interface ToolDefinition {
     required?: boolean;
     enum?: string[];
   }>;
-  permission: 'read-only' | 'interact' | 'navigate';
+  permission: 'read-only' | 'interact' | 'navigate' | 'submit';
 }
 ```
 
 ### `executeToolAction(toolName, args, tabId)`
 
-Executes a tool action and returns the result string.
+Executes a tool action and returns the result.
 
 ```typescript
 async function executeToolAction(
   toolName: string,
   args: Record<string, unknown>,
   tabId?: number
-): Promise<string>
+): Promise<unknown>
 ```
 
 ## Harbor Engine (`src/lib/harbor-engine.ts`)
@@ -415,9 +447,25 @@ async function executeToolAction(
 function checkPermission(
   policy: HarborPolicy,
   toolName: string,
-  permLevel: 'read-only' | 'interact' | 'navigate',
+  permLevel: PermissionLevel,  // 'read-only' | 'navigate' | 'interact' | 'submit'
   site: string
 ): 'auto-approve' | 'ask' | 'deny'
+```
+
+### `updateHarborPolicyForDecision(toolName, site, decision)`
+
+```typescript
+async function updateHarborPolicyForDecision(
+  toolName: string,
+  site: string,
+  decision: string  // PermissionDecision
+): Promise<void>
+```
+
+### `isCriticalAction(buttonText, url)`
+
+```typescript
+function isCriticalAction(buttonText: string, url: string): boolean
 ```
 
 ## Page Cache (`src/lib/page-cache.ts`)
@@ -439,3 +487,7 @@ async function getCachedSnapshot(url?: string): Promise<CachedPageSnapshot | nul
 async function getLastProductContext(): Promise<ProductInfo | null>
 ```
 
+### `getRecentSnapshots(limit?)`
+```typescript
+async function getRecentSnapshots(limit?: number): Promise<CachedPageSnapshot[]>
+```

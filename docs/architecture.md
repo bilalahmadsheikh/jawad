@@ -64,6 +64,7 @@ FoxAgent is a Firefox browser extension that turns the browser into an AI-powere
   - **DOM reading** (`dom-reader.ts`): Extracts page content, product data, interactive elements
   - **Page actions** (`page-actions.ts`): Click, fill, scroll with visual highlighting
   - **Voice capture**: Runs `SpeechRecognition` API (requires page context, not sidebar)
+  - **Vision fallback** (`vision-fallback.ts`): Screenshot-based fallback for difficult pages
   - **Visual highlighting** (`visual-highlighter.ts`): Highlights elements before interaction
 - **Communication**: Responds to `browser.runtime.onMessage` from background script; sends results back via `browser.runtime.sendMessage`.
 
@@ -75,7 +76,7 @@ FoxAgent is a Firefox browser extension that turns the browser into an AI-powere
 User types message
        │
        ▼
-Sidebar (Chat.tsx) ──► port.postMessage({ type: 'CHAT', content })
+Sidebar (Chat.tsx) ──► port.postMessage({ type: 'CHAT_MESSAGE', payload: { content } })
        │
        ▼
 Background (message-handler.ts)
@@ -153,7 +154,7 @@ Sidebar (useVoiceInput.ts) ──► calls onResult(transcript)
 
 ```
 src/
-├── agents/              # Specialized agent definitions (future)
+├── agents/              # Specialized agent definitions (search, calendar, email, summarize)
 ├── background/
 │   ├── index.ts         # Entry point, port management, voice relay
 │   ├── agent-manager.ts # Core agent loop (LLM ↔ tools)
@@ -163,8 +164,8 @@ src/
 │   ├── index.ts         # Message router, voice capture
 │   ├── dom-reader.ts    # Page extraction (structured + Readability)
 │   ├── page-actions.ts  # Click, fill, scroll
-│   ├── visual-highlighter.ts # Element highlighting
-│   └── vision-fallback.ts    # Screenshot-based fallback (future)
+│   ├── vision-fallback.ts    # Screenshot-based fallback
+│   └── visual-highlighter.ts # Element highlighting before interaction
 ├── lib/
 │   ├── any-llm-router.ts    # Universal LLM abstraction
 │   ├── constants.ts          # System prompt, defaults

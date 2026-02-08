@@ -96,8 +96,11 @@ FoxAgent classifies user input to route requests efficiently:
 ## Permission System (Harbor)
 
 - **Scoped permissions**: Per-tool, per-site, per-permission-level
+- **Four permission levels**: `read-only`, `navigate`, `interact`, `submit`
 - **Three outcomes**: auto-approve, ask user, deny
 - **User confirmation**: Modal overlay for sensitive actions
-- **Time-bounded**: Policies can be temporary or permanent
+- **Critical action detection**: Keywords like "checkout", "purchase", "delete" always require confirmation
+- **Time-bounded**: Site trust entries support optional expiration timestamps
 - **Inspectable**: Action log shows all tool executions and their results
+- **User decisions**: Allow once, allow for site, allow for session, deny, deny all
 

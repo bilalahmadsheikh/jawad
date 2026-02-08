@@ -27,8 +27,8 @@ sidebar/
 │   ├── useVoiceInput.ts     # Voice input relay
 │   └── useHarbor.ts         # Permission state
 ├── stores/
-│   ├── chat-store.ts        # Messages, loading state
-│   ├── harbor-store.ts      # Permission policies
+│   ├── chat-store.ts        # Messages, loading state, active tab
+│   ├── harbor-store.ts      # Pending permissions, action log
 │   └── workflow-store.ts    # Workflow plan state
 └── lib/
     └── port.ts              # Background port singleton
@@ -36,13 +36,16 @@ sidebar/
 
 ## Tab Navigation
 
-The sidebar has three main tabs:
+The sidebar has four main tabs:
 
-| Tab | Component | Purpose |
-|-----|-----------|---------|
-| **Chat** | `Chat.tsx` | Main conversational interface |
-| **Actions** | `ActionLog.tsx` | History of all tool executions |
-| **Settings** | `Settings.tsx` | LLM provider configuration |
+| Tab | ID | Icon | Component | Purpose |
+|-----|----|------|-----------|---------|
+| **Chat** | `chat` | MessageSquare | `Chat.tsx` | Main conversational interface |
+| **Log** | `activity` | Activity | `ActionLog.tsx` | History of all tool executions |
+| **Config** | `settings` | Settings | `Settings.tsx` | LLM provider configuration |
+| **Harbor** | `harbor` | Shield | `HarborManager.tsx` | Permission policy editor |
+
+Tab type: `type TabId = 'chat' | 'activity' | 'settings' | 'harbor';`
 
 ## Chat Interface (`Chat.tsx`)
 
@@ -61,12 +64,28 @@ The sidebar has three main tabs:
 ### Message Flow
 ```
 User input → useLLM.sendChatMessage(content)
-          → port.postMessage({ type: 'CHAT' })
+          → port.postMessage({ type: 'CHAT_MESSAGE', payload: { content } })
           → Background processes
           → CHAT_RESPONSE received
           → chatStore.addMessage()
+          → chatStore.setLoading(false)
           → UI re-renders
 ```
+
+### Welcome Message
+On startup (and after `clearMessages()`), the chat shows:
+
+> **Welcome to FoxAgent!** I'm your browser operating system.
+>
+> I can:
+> - **Summarize** any web page
+> - **Navigate** and **interact** with sites
+> - **Research** across multiple tabs
+> - Accept **voice commands**
+>
+> Configure your AI provider in **Settings** to get started.
+
+After clearing, it shows: "Chat cleared. How can I help you?"
 
 ## Settings Panel (`Settings.tsx`)
 
@@ -81,7 +100,7 @@ User input → useLLM.sendChatMessage(content)
 | **System Prompt** | Custom instructions for the AI agent |
 
 ### Persistence
-Settings are saved to `browser.storage.local` and loaded on startup.
+Settings are saved to `browser.storage.local` via `SAVE_SETTINGS` and loaded on startup via `GET_SETTINGS`.
 
 ## Voice Button (`VoiceButton.tsx`)
 
@@ -108,7 +127,7 @@ Settings are saved to `browser.storage.local` and loaded on startup.
 Appears as an overlay when a tool requires user confirmation:
 
 - Shows tool name, target site, and action details
-- Three options: Allow Once, Allow Always (saves policy), Deny
+- Options: Allow Once, Allow for Site, Deny
 - Blocks further agent execution until resolved
 - Keyboard accessible (Enter to allow, Escape to deny)
 
@@ -117,27 +136,46 @@ Appears as an overlay when a tool requires user confirmation:
 ### Chat Store (`chat-store.ts`)
 
 ```typescript
+type TabId = 'chat' | 'activity' | 'settings' | 'harbor';
+
 interface ChatState {
   messages: ChatMessage[];
   isLoading: boolean;
-  activeTab: 'chat' | 'actions' | 'settings';
+  activeTab: TabId;
+
   addMessage: (msg: ChatMessage) => void;
   setLoading: (loading: boolean) => void;
-  setActiveTab: (tab: string) => void;
+  setActiveTab: (tab: TabId) => void;
   clearMessages: () => void;
 }
 ```
 
 ### Harbor Store (`harbor-store.ts`)
 
-Manages permission policies with persistence to `browser.storage.local`.
+```typescript
+interface HarborState {
+  pendingPermissions: PermissionRequest[];
+  actionLog: ActionLogEntry[];
+
+  addPendingPermission: (req: PermissionRequest) => void;
+  removePendingPermission: (id: string) => void;
+  addActionLogEntry: (entry: ActionLogEntry) => void;
+  clearActionLog: () => void;
+}
+```
+
+Keeps the last 100 action log entries. Pending permissions are displayed as modals; the first in the queue is shown at any time.
 
 ### Workflow Store (`workflow-store.ts`)
 
-Tracks multi-step workflow state:
-- Current workflow plan
-- Step completion status
-- Intermediate results
+```typescript
+interface WorkflowState {
+  currentWorkflow: WorkflowPlan | null;
+
+  setWorkflow: (workflow: WorkflowPlan | null) => void;
+  updateStepStatus: (stepId: string, status: string, result?: unknown) => void;
+}
+```
 
 ## Background Communication (`lib/port.ts`)
 
@@ -145,7 +183,7 @@ Singleton pattern for the background script connection:
 
 ```typescript
 // Send a message to the background script
-sendToBackground({ type: 'CHAT', content: 'Hello' });
+sendToBackground({ type: 'CHAT_MESSAGE', payload: { content: 'Hello' } });
 
 // Listen for messages from background
 const unsubscribe = addMessageHandler((msg) => {
@@ -159,26 +197,29 @@ const unsubscribe = addMessageHandler((msg) => {
 
 | Type | Payload | Purpose |
 |------|---------|---------|
-| `CHAT` | `{ content: string }` | Send chat message |
-| `SUMMARIZE` | — | Request page summary |
+| `CHAT_MESSAGE` | `{ content: string }` | Send chat message |
+| `SUMMARIZE_PAGE` | — | Request page summary |
 | `START_VOICE` | — | Begin voice capture |
 | `STOP_VOICE` | — | End voice capture |
-| `PERMISSION_RESPONSE` | `{ allowed: boolean, remember: boolean }` | Respond to permission request |
+| `PERMISSION_RESPONSE` | `{ requestId: string, decision: string }` | Respond to permission request |
 | `SAVE_SETTINGS` | `LLMConfig` | Save provider settings |
-| `LOAD_SETTINGS` | — | Load saved settings |
+| `GET_SETTINGS` | — | Load saved settings |
+| `START_WORKFLOW` | `{ intent: string }` | Start multi-step research |
+| `CANCEL_WORKFLOW` | — | Cancel running workflow |
+| `CLEAR_HISTORY` | — | Clear conversation history |
 
 ### Message Types (Background → Sidebar)
 
 | Type | Payload | Purpose |
 |------|---------|---------|
-| `CHAT_RESPONSE` | `{ content: string }` | Final AI response |
-| `ACTION_UPDATE` | `{ tool, args, result }` | Tool execution log entry |
-| `PERMISSION_REQUEST` | `{ tool, site, args }` | Ask user permission |
-| `SETTINGS_LOADED` | `LLMConfig` | Return saved settings |
-| `VOICE_RESULT` | `{ transcript: string }` | Voice transcription result |
+| `CHAT_RESPONSE` | `{ content: string, isError?: boolean }` | Final AI response |
+| `ACTION_LOG_UPDATE` | `ActionLogEntry` | Tool execution log entry |
+| `PERMISSION_REQUEST` | `PermissionRequest` | Ask user permission |
+| `SETTINGS` | `LLMConfig \| null` | Return saved settings |
+| `VOICE_RESULT` | `{ transcript: string, isFinal: boolean }` | Voice transcription result |
 | `VOICE_END` | — | Voice capture ended |
 | `VOICE_ERROR` | `{ error: string }` | Voice error message |
-| `WORKFLOW_UPDATE` | `{ plan, step, status }` | Workflow progress |
+| `WORKFLOW_UPDATE` | `WorkflowPlan` | Workflow progress |
 
 ## Styling
 
@@ -186,4 +227,3 @@ const unsubscribe = addMessageHandler((msg) => {
 - **Responsive**: Adapts to sidebar width
 - **Lucide React** icons throughout
 - **Animations**: Loading spinner, voice pulse, permission modal fade
-
