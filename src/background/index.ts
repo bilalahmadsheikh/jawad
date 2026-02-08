@@ -19,13 +19,14 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
     port.onMessage.addListener((msg: unknown) => {
       const message = msg as Record<string, unknown>;
 
-      // Mic permission check: relay to content script and return result
-      if (message.type === 'CHECK_MIC_PERMISSION') {
-        checkMicPermissionOnActiveTab();
+      // Voice audio sent directly from sidebar (sidebar-based recording)
+      if (message.type === 'VOICE_AUDIO_DIRECT') {
+        const payload = message.payload as { audio: string; mimeType: string };
+        handleVoiceTranscription(payload);
         return;
       }
 
-      // Voice commands: relay to content script
+      // Legacy: relay voice commands to content script (fallback path)
       if (message.type === 'START_VOICE') {
         relayVoiceCommand('START_VOICE_INPUT');
         return;
@@ -132,34 +133,6 @@ async function handleVoiceTranscription(payload: {
         },
       });
     }
-  }
-}
-
-/**
- * Check mic permission on the active tab's content script.
- * Sends MIC_PERMISSION_STATUS back to the sidebar.
- */
-async function checkMicPermissionOnActiveTab(): Promise<void> {
-  try {
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    const tab = tabs[0];
-    if (tab?.id) {
-      const result = await browser.tabs.sendMessage(tab.id, { type: 'CHECK_MIC_PERMISSION' });
-      sidebarPort?.postMessage({
-        type: 'MIC_PERMISSION_STATUS',
-        payload: result,
-      });
-    } else {
-      sidebarPort?.postMessage({
-        type: 'MIC_PERMISSION_STATUS',
-        payload: { status: 'no-tab', details: 'No active tab. Navigate to a webpage first.' },
-      });
-    }
-  } catch {
-    sidebarPort?.postMessage({
-      type: 'MIC_PERMISSION_STATUS',
-      payload: { status: 'error', details: 'Cannot check mic on this page. Navigate to a regular webpage.' },
-    });
   }
 }
 
