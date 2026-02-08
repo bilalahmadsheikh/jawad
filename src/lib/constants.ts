@@ -44,7 +44,7 @@ export const OPENROUTER_URL = 'https://openrouter.ai/api/v1';
 export const OPENAI_URL = 'https://api.openai.com/v1';
 
 export const DEFAULT_MODELS: Record<string, string[]> = {
-  ollama: ['llama3', 'mistral', 'codellama', 'gemma2', 'phi3', 'llama3.1', 'qwen2'],
+  ollama: ['llama3', 'llama3:latest', 'mistral', 'codellama', 'gemma2', 'phi3'],
   openrouter: [
     'openai/gpt-4o',
     'openai/gpt-4o-mini',

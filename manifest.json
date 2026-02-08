@@ -29,6 +29,6 @@
     "48": "icons/fox.svg",
     "96": "icons/fox.svg"
   },
-  "content_security_policy": "script-src 'self'; object-src 'self'"
+  "content_security_policy": "script-src 'self'; object-src 'self'; connect-src 'self' http://localhost:* http://127.0.0.1:* https://*"
 }
 
