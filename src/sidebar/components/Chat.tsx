@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '../stores/chat-store';
 import { VoiceButton } from './VoiceButton';
-import { MicSetupCard } from './MicSetupCard';
 import type { LLMActions } from '../hooks/useLLM';
 import { Send, Trash2, Zap, Bot, User, FileText, Sparkles, Globe, MousePointer, Mic } from 'lucide-react';
 
@@ -82,7 +81,6 @@ export function Chat({ llm }: ChatProps) {
 
   return (
     <div className="flex flex-col h-full">
-      <MicSetupCard />
 
       {!hasMessages && !isLoading ? (
         <WelcomeScreen onChip={send} />

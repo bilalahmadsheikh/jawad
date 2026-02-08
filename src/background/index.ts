@@ -23,14 +23,7 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
     port.onMessage.addListener((msg: unknown) => {
       const message = msg as Record<string, unknown>;
 
-      // Voice audio sent directly from sidebar (Whisper path)
-      if (message.type === 'VOICE_AUDIO_DIRECT') {
-        const payload = message.payload as { audio: string; mimeType: string };
-        handleVoiceTranscription(payload);
-        return;
-      }
-
-      // Relay voice commands to content script (Browser Speech or legacy Whisper)
+      // Relay voice commands to content script
       if (message.type === 'START_VOICE') {
         relayVoiceCommand('START_VOICE_INPUT');
         return;
@@ -77,8 +70,7 @@ browser.runtime.onMessage.addListener(
       message.type === 'VOICE_END' ||
       message.type === 'VOICE_ERROR' ||
       message.type === 'VOICE_STARTED' ||
-      message.type === 'VOICE_TRANSCRIBING' ||
-      message.type === 'VOICE_REQUESTING_MIC'
+      message.type === 'VOICE_TRANSCRIBING'
     ) {
       if (sidebarPort) {
         sidebarPort.postMessage(msg);

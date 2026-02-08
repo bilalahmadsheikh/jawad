@@ -37,11 +37,6 @@ browser.runtime.onMessage.addListener(
       case 'SCROLL_PAGE':
         return scrollPage(message.payload!.direction as 'up' | 'down');
 
-      // Microphone permission check — returns current state
-      case 'CHECK_MIC_PERMISSION': {
-        return checkMicPermission();
-      }
-
       // Voice input — uses MediaRecorder for reliable audio capture (Whisper path)
       case 'START_VOICE_INPUT': {
         startVoiceCapture();
@@ -69,49 +64,7 @@ browser.runtime.onMessage.addListener(
   }
 );
 
-// ---------- Microphone permission ----------
-
-/**
- * Check microphone permission state and page capabilities.
- * Returns a status string the sidebar can use to show the right UI.
- */
-async function checkMicPermission(): Promise<{ status: string; details?: string }> {
-  // 1. Check secure context (getUserMedia requires HTTPS, localhost, or file://)
-  if (!window.isSecureContext) {
-    return {
-      status: 'insecure',
-      details: 'This page is not HTTPS. Navigate to a secure (HTTPS) site to use voice input.',
-    };
-  }
-
-  // 2. Check if mediaDevices API exists
-  if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
-    return {
-      status: 'unavailable',
-      details: 'Microphone API not available on this page.',
-    };
-  }
-
-  // 3. Check MediaRecorder
-  if (typeof MediaRecorder === 'undefined') {
-    return {
-      status: 'unavailable',
-      details: 'MediaRecorder not available on this page.',
-    };
-  }
-
-  // 4. Query permission state via Permissions API
-  try {
-    const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
-    // result.state: 'granted' | 'denied' | 'prompt'
-    return { status: result.state };
-  } catch {
-    // Permissions API not available — we'll need to try getUserMedia to find out
-    return { status: 'prompt' };
-  }
-}
-
-// ---------- Voice capture (MediaRecorder) ----------
+// ---------- Voice capture (MediaRecorder for Whisper path) ----------
 
 /**
  * Convert a Blob to a base64 string (without the data: prefix).
@@ -214,14 +167,7 @@ function startVoiceCapture(): void {
     }
 
     // Permission is 'granted' or 'prompt' — call getUserMedia.
-    // If 'prompt', the browser will show the "Allow microphone?" dialog now.
-    browser.runtime.sendMessage({
-      type: 'VOICE_REQUESTING_MIC',
-      payload: {
-        permissionState: permResult ? permResult.state : 'unknown',
-      },
-    });
-
+    // If 'prompt', the browser will show the "Allow microphone?" dialog.
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((stream) => {

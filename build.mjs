@@ -41,10 +41,6 @@ async function buildExtension() {
   console.log('[4/4] Copying assets...');
   cpSync('manifest.json', 'dist/manifest.json');
 
-  // Microphone setup page (one-time voice onboarding)
-  cpSync('mic-setup.html', 'dist/mic-setup.html');
-  cpSync('mic-setup.js', 'dist/mic-setup.js');
-
   if (existsSync('icons')) {
     mkdirSync('dist/icons', { recursive: true });
     cpSync('icons', 'dist/icons', { recursive: true });
