@@ -1,5 +1,6 @@
 // ============================================================
 // Orchestrator - Research Mode multi-tab workflow execution
+// Uses specialized agents: SearchAgent, EmailAgent, CalendarAgent, SummarizeAgent
 // ============================================================
 
 import { chatCompletion } from '../lib/any-llm-router';
@@ -7,8 +8,62 @@ import { runAgentLoop } from './agent-manager';
 import { requestPermissionFromUser } from './message-handler';
 import type { LLMConfig, WorkflowPlan, WorkflowStep } from '../lib/types';
 import { generateId } from '../lib/constants';
+import {
+  SEARCH_AGENT_PROMPT,
+  SEARCH_SITES,
+} from '../agents/search-agent';
+import {
+  EMAIL_AGENT_PROMPT,
+  EMAIL_SITES,
+} from '../agents/email-agent';
+import {
+  CALENDAR_AGENT_PROMPT,
+  CALENDAR_SITES,
+} from '../agents/calendar-agent';
+import {
+  SUMMARIZE_AGENT_PROMPT,
+  detectContentType,
+} from '../agents/summarize-agent';
 
 let isCancelled = false;
+
+// Map agent names to their specialized prompts
+const AGENT_PROMPTS: Record<string, string> = {
+  SearchAgent: SEARCH_AGENT_PROMPT,
+  EmailAgent: EMAIL_AGENT_PROMPT,
+  CalendarAgent: CALENDAR_AGENT_PROMPT,
+  SummarizeAgent: SUMMARIZE_AGENT_PROMPT,
+  CompareAgent: SEARCH_AGENT_PROMPT, // CompareAgent uses search-style extraction
+};
+
+/**
+ * Build the system prompt for a workflow step using the specialized agent.
+ */
+function buildStepPrompt(
+  agentName: string,
+  task: string,
+  site: string,
+  pageContent: string,
+  previousContext: string,
+  pageTitle?: string
+): string {
+  const basePrompt =
+    AGENT_PROMPTS[agentName] ||
+    `You are a research agent. Extract relevant information from the page content and complete the task.`;
+
+  let contextBlock = `**Current task:** ${task}\n**Site:** ${site}\n\n**Page content:**\n${pageContent.substring(0, 4000)}`;
+
+  if (previousContext) {
+    contextBlock += `\n\n**Context from previous steps:**\n${previousContext}`;
+  }
+
+  if (agentName === 'SummarizeAgent' && pageTitle) {
+    const contentType = detectContentType(site, pageTitle);
+    contextBlock += `\n\n**Content type detected:** ${contentType}`;
+  }
+
+  return `${basePrompt}\n\n---\n\n${contextBlock}`;
+}
 
 /**
  * Cancel the currently running workflow.
@@ -98,16 +153,19 @@ export async function planAndExecuteWorkflow(
           .map(([key, val]) => `Previous result (${key}): ${JSON.stringify(val)}`)
           .join('\n');
 
-        // Run agent for this step
+        // Run the specialized agent for this step
+        const systemPrompt = buildStepPrompt(
+          step.agent,
+          step.task,
+          step.site,
+          pageContent?.markdown || 'No content',
+          previousContext,
+          pageContent?.title
+        );
+
         const stepMessages = [
-          {
-            role: 'system',
-            content: `You are a research agent. Your current task: ${step.task}\nSite: ${step.site}\nPage content:\n${pageContent?.markdown?.substring(0, 3000) || 'No content'}\n\n${previousContext ? `Context from previous steps:\n${previousContext}` : ''}`,
-          },
-          {
-            role: 'user',
-            content: step.task,
-          },
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: step.task },
         ];
 
         const stepResult = await runAgentLoop(
@@ -160,11 +218,19 @@ export async function planAndExecuteWorkflow(
 
 /**
  * Use the LLM to create a structured workflow plan from a user's intent.
+ * Includes specialized agent types and suggested sites.
  */
 async function createWorkflowPlan(
   config: LLMConfig,
   intent: string
 ): Promise<WorkflowPlan> {
+  const siteHints = `Suggested sites by agent type:
+- SearchAgent: ${SEARCH_SITES.products.join(', ')}; ${SEARCH_SITES.flights.join(', ')};
+  Google search: https://www.google.com/search?q=QUERY
+- CalendarAgent: ${CALENDAR_SITES.join(', ')}
+- EmailAgent: ${EMAIL_SITES.join(', ')}
+- SummarizeAgent: Use any article/product URL the user wants summarized`;
+
   const response = await chatCompletion(config, {
     messages: [
       {
@@ -172,19 +238,26 @@ async function createWorkflowPlan(
         content: `You are a workflow planner. Given a user's intent, decompose it into a sequence of web research steps.
 
 Each step should have:
-- agent: The type of agent (SearchAgent, CalendarAgent, EmailAgent, CompareAgent)
-- task: What the agent should do
-- site: The URL to visit
+- agent: One of SearchAgent, CalendarAgent, EmailAgent, SummarizeAgent, or CompareAgent
+  - SearchAgent: for searching products, flights, hotels, news, comparisons
+  - CalendarAgent: for checking calendar, availability, conflicts
+  - EmailAgent: for drafting emails (opens Gmail/Outlook compose)
+  - SummarizeAgent: for summarizing a page or article
+  - CompareAgent: for comparing options across sites
+- task: What the agent should do on that page
+- site: The exact URL to visit (use real URLs)
+
+${siteHints}
 
 Respond with ONLY valid JSON in this format:
 {
   "steps": [
-    { "agent": "SearchAgent", "task": "Search for...", "site": "https://..." },
+    { "agent": "SearchAgent", "task": "Search for...", "site": "https://www.google.com/search?q=..." },
     ...
   ]
 }
 
-Keep it to 3-5 steps. Use real, common websites.`,
+Keep it to 3-5 steps. Use real, common websites. For search, use Google with the query in the URL.`,
       },
       {
         role: 'user',
