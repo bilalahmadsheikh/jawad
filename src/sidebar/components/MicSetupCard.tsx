@@ -1,24 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { Mic, X, ExternalLink } from 'lucide-react';
 
+const VOICE_MODE_KEY = 'jawad_voice_mode';
+
 export function MicSetupCard() {
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [voiceMode, setVoiceMode] = useState<'whisper' | 'browser'>('whisper');
 
   useEffect(() => {
     browser.storage.local
-      .get(['jawad_mic_granted', 'jawad_mic_dismissed'])
-      .then((d) => { if (!d.jawad_mic_granted && !d.jawad_mic_dismissed) setVisible(true); })
+      .get(['jawad_mic_granted', 'jawad_mic_dismissed', VOICE_MODE_KEY])
+      .then((d) => {
+        const mode = d[VOICE_MODE_KEY] === 'browser' ? 'browser' : 'whisper';
+        setVoiceMode(mode);
+        if (mode === 'whisper' && !d.jawad_mic_granted && !d.jawad_mic_dismissed) {
+          setVisible(true);
+        }
+      })
       .catch(() => {});
 
     const onChange = (changes: Record<string, { oldValue?: unknown; newValue?: unknown }>) => {
       if (changes.jawad_mic_granted?.newValue === true) setVisible(false);
+      if (changes[VOICE_MODE_KEY]?.newValue === 'browser') setVisible(false);
     };
     browser.storage.onChanged.addListener(onChange);
     return () => browser.storage.onChanged.removeListener(onChange);
   }, []);
 
-  if (!visible || dismissed) return null;
+  if (!visible || dismissed || voiceMode === 'browser') return null;
 
   const open = () => browser.tabs.create({ url: browser.runtime.getURL('mic-setup.html'), active: true });
   const dismiss = (e: React.MouseEvent) => {

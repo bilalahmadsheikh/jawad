@@ -10,14 +10,29 @@ import type { LLMConfig } from './types';
 // ============================================================
 
 /**
+ * Check if the configured LLM provider supports audio transcription.
+ * OpenAI and OpenRouter support Whisper. Ollama does not (separate model, different API).
+ */
+export function supportsTranscription(config: LLMConfig): boolean {
+  return config.provider === 'openai' || config.provider === 'openrouter';
+}
+
+/**
  * Transcribe audio using the provider's OpenAI-compatible /audio/transcriptions endpoint.
- * Works with OpenAI (Whisper), OpenRouter, and Ollama (if whisper model is available).
+ * Works with OpenAI (Whisper) and OpenRouter. Ollama does not support this — use Browser Speech fallback.
  */
 export async function transcribeAudio(
   config: LLMConfig,
   audioBase64: string,
   mimeType: string
 ): Promise<string> {
+  if (!supportsTranscription(config)) {
+    throw new Error(
+      `Voice transcription requires OpenAI or OpenRouter. ${config.provider} does not support Whisper. ` +
+      'Switch to OpenAI/OpenRouter in Settings, or use "Browser Speech" mode (free, no API key).'
+    );
+  }
+
   const baseUrl = config.baseUrl.replace(/\/+$/, '');
   const url = `${baseUrl}/audio/transcriptions`;
 
@@ -60,14 +75,17 @@ export async function transcribeAudio(
 
   if (!response.ok) {
     const errorBody = await response.text().catch(() => '');
+    if (response.status === 401) {
+      throw new Error('Invalid API key. Check your Settings.');
+    }
     if (response.status === 404) {
       throw new Error(
-        `Your provider (${config.provider}) does not support audio transcription at ${url}. ` +
-        'Try using OpenAI or an OpenAI-compatible provider that supports Whisper.'
+        `Your provider does not support voice transcription. ` +
+        'Use OpenAI or OpenRouter, or switch to "Browser Speech" mode.'
       );
     }
     throw new Error(
-      `Transcription failed (${response.status}): ${errorBody || response.statusText}`
+      `Transcription failed: ${errorBody || response.statusText}`
     );
   }
 

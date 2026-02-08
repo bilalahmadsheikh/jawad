@@ -2,10 +2,14 @@
 // Jawad Background Script
 // Central hub for LLM calls, tool execution, message routing.
 // Handles voice relay: content script → transcription → sidebar.
+// Supports Whisper (OpenAI/OpenRouter) and Browser Speech (free fallback).
 // ============================================================
 
 import { handleMessage } from './message-handler';
-import { transcribeAudio } from '../lib/any-llm-router';
+import {
+  transcribeAudio,
+  supportsTranscription,
+} from '../lib/any-llm-router';
 import type { LLMConfig } from '../lib/types';
 
 let sidebarPort: browser.Port | null = null;
@@ -19,20 +23,28 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
     port.onMessage.addListener((msg: unknown) => {
       const message = msg as Record<string, unknown>;
 
-      // Voice audio sent directly from sidebar (sidebar-based recording)
+      // Voice audio sent directly from sidebar (Whisper path)
       if (message.type === 'VOICE_AUDIO_DIRECT') {
         const payload = message.payload as { audio: string; mimeType: string };
         handleVoiceTranscription(payload);
         return;
       }
 
-      // Legacy: relay voice commands to content script (fallback path)
+      // Relay voice commands to content script (Browser Speech or legacy Whisper)
       if (message.type === 'START_VOICE') {
         relayVoiceCommand('START_VOICE_INPUT');
         return;
       }
       if (message.type === 'STOP_VOICE') {
         relayVoiceCommand('STOP_VOICE_INPUT');
+        return;
+      }
+      if (message.type === 'START_SPEECH_RECOGNITION') {
+        relayVoiceCommand('START_SPEECH_RECOGNITION');
+        return;
+      }
+      if (message.type === 'STOP_SPEECH_RECOGNITION') {
+        relayVoiceCommand('STOP_SPEECH_RECOGNITION');
         return;
       }
 
@@ -58,9 +70,10 @@ browser.runtime.onMessage.addListener(
       return Promise.resolve(undefined);
     }
 
-    // Voice state messages: forward from content script to sidebar
+    // Voice state / result messages: forward from content script to sidebar
     if (
       message.type === 'VOICE_RESULT' ||
+      message.type === 'VOICE_SPEECH_RESULT' ||
       message.type === 'VOICE_END' ||
       message.type === 'VOICE_ERROR' ||
       message.type === 'VOICE_STARTED' ||
@@ -84,6 +97,7 @@ browser.runtime.onMessage.addListener(
 
 /**
  * Handle audio transcription: load LLM config and call Whisper API.
+ * Uses supportsTranscription to give clear guidance when provider doesn't support it.
  */
 async function handleVoiceTranscription(payload: {
   audio: string;
@@ -98,7 +112,18 @@ async function handleVoiceTranscription(payload: {
         type: 'VOICE_ERROR',
         payload: {
           error:
-            'No LLM provider configured. Go to Settings and configure a provider to enable voice transcription.',
+            'Configure an LLM (OpenAI or OpenRouter) in Settings for voice, or use "Browser Speech" mode (free, no API key).',
+        },
+      });
+      return;
+    }
+
+    if (!supportsTranscription(config)) {
+      sidebarPort?.postMessage({
+        type: 'VOICE_ERROR',
+        payload: {
+          error:
+            'Voice requires OpenAI or OpenRouter. Ollama doesn\'t support Whisper. Switch provider or use "Browser Speech" mode.',
         },
       });
       return;
@@ -138,6 +163,7 @@ async function handleVoiceTranscription(payload: {
 
 /**
  * Send a voice command to the content script on the active tab.
+ * For START_SPEECH_RECOGNITION, the content script returns { success, error }.
  */
 async function relayVoiceCommand(type: string): Promise<void> {
   try {
@@ -146,13 +172,25 @@ async function relayVoiceCommand(type: string): Promise<void> {
       currentWindow: true,
     });
     const tab = tabs[0];
-    if (tab?.id) {
-      await browser.tabs.sendMessage(tab.id, { type });
-    } else if (sidebarPort) {
-      sidebarPort.postMessage({
+    if (!tab?.id) {
+      sidebarPort?.postMessage({
         type: 'VOICE_ERROR',
-        payload: { error: 'No active tab. Navigate to a webpage first.' },
+        payload: { error: 'No active tab. Navigate to an HTTPS webpage first.' },
       });
+      return;
+    }
+
+    const result = await browser.tabs.sendMessage(tab.id, { type });
+
+    // START_SPEECH_RECOGNITION returns { success, error }
+    if (type === 'START_SPEECH_RECOGNITION' && result && typeof result === 'object') {
+      const r = result as { success?: boolean; error?: string };
+      if (!r.success && r.error && sidebarPort) {
+        sidebarPort.postMessage({
+          type: 'VOICE_ERROR',
+          payload: { error: r.error },
+        });
+      }
     }
   } catch {
     if (sidebarPort) {
@@ -160,7 +198,7 @@ async function relayVoiceCommand(type: string): Promise<void> {
         type: 'VOICE_ERROR',
         payload: {
           error:
-            'Cannot access this page for voice input. Try navigating to a regular webpage.',
+            'Cannot access this page. Use an HTTPS site and ensure the extension is loaded.',
         },
       });
     }

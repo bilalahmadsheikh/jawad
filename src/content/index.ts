@@ -12,6 +12,9 @@ let mediaRecorder: MediaRecorder | null = null;
 let audioChunks: Blob[] = [];
 let mediaStream: MediaStream | null = null;
 
+// ---------- Web Speech API state (fallback when no Whisper) ----------
+let speechRecognition: SpeechRecognition | null = null;
+
 // ---------- Message listener ----------
 browser.runtime.onMessage.addListener(
   (msg: unknown): Promise<unknown> | undefined => {
@@ -39,7 +42,7 @@ browser.runtime.onMessage.addListener(
         return checkMicPermission();
       }
 
-      // Voice input — uses MediaRecorder for reliable audio capture
+      // Voice input — uses MediaRecorder for reliable audio capture (Whisper path)
       case 'START_VOICE_INPUT': {
         startVoiceCapture();
         return Promise.resolve({ success: true });
@@ -47,6 +50,16 @@ browser.runtime.onMessage.addListener(
 
       case 'STOP_VOICE_INPUT': {
         stopVoiceCapture();
+        return Promise.resolve({ success: true });
+      }
+
+      // Web Speech API — free fallback, real-time transcript
+      case 'START_SPEECH_RECOGNITION': {
+        return startSpeechRecognition();
+      }
+
+      case 'STOP_SPEECH_RECOGNITION': {
+        stopSpeechRecognition();
         return Promise.resolve({ success: true });
       }
 
@@ -316,6 +329,114 @@ function stopVoiceCapture(): void {
       mediaStream = null;
     }
     browser.runtime.sendMessage({ type: 'VOICE_END' });
+  }
+}
+
+// ---------- Web Speech API (free fallback, real-time transcript) ----------
+
+const SpeechRecognitionAPI =
+  (typeof window !== 'undefined' &&
+    (window.SpeechRecognition || (window as unknown as { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition)) ||
+  null;
+
+function startSpeechRecognition(): Promise<{ success: boolean; error?: string }> {
+  return new Promise((resolve) => {
+    if (!SpeechRecognitionAPI) {
+      resolve({
+        success: false,
+        error: 'Web Speech API not available. Use HTTPS and a supported browser.',
+      });
+      return;
+    }
+
+    if (!window.isSecureContext) {
+      resolve({
+        success: false,
+        error: 'Voice requires a secure (HTTPS) page. Navigate to an HTTPS site.',
+      });
+      return;
+    }
+
+    try {
+      stopSpeechRecognition();
+      const recognition = new SpeechRecognitionAPI() as SpeechRecognition;
+      speechRecognition = recognition;
+
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+
+      recognition.onstart = () => {
+        browser.runtime.sendMessage({ type: 'VOICE_STARTED' });
+      };
+
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        let interim = '';
+        let final = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const result = event.results[i];
+          const transcript = result[0]?.transcript || '';
+          if (result.isFinal) {
+            final += transcript;
+          } else {
+            interim += transcript;
+          }
+        }
+        const text = (final || interim).trim();
+        if (text) {
+          browser.runtime.sendMessage({
+            type: 'VOICE_SPEECH_RESULT',
+            payload: {
+              transcript: text,
+              isFinal: !!final,
+              isInterim: !!interim && !final,
+            },
+          });
+        }
+      };
+
+      recognition.onerror = (event: Event) => {
+        const e = event as { error?: string; message?: string };
+        const err = e.error || e.message || 'Unknown error';
+        if (err === 'no-speech') {
+          browser.runtime.sendMessage({
+            type: 'VOICE_SPEECH_RESULT',
+            payload: { transcript: '', isFinal: true, isInterim: false },
+          });
+        } else if (err !== 'aborted') {
+          browser.runtime.sendMessage({
+            type: 'VOICE_ERROR',
+            payload: {
+              error: err === 'not-allowed'
+                ? 'Microphone access denied. Click the lock icon to allow.'
+                : `Speech recognition error: ${err}`,
+            },
+          });
+        }
+      };
+
+      recognition.onend = () => {
+        speechRecognition = null;
+        browser.runtime.sendMessage({ type: 'VOICE_END' });
+      };
+
+      recognition.start();
+      resolve({ success: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      resolve({ success: false, error: msg });
+    }
+  });
+}
+
+function stopSpeechRecognition(): void {
+  if (speechRecognition) {
+    try {
+      speechRecognition.stop();
+    } catch {
+      // Ignore
+    }
+    speechRecognition = null;
   }
 }
 

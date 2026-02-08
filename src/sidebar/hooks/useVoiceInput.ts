@@ -9,18 +9,24 @@ export type MicPermission =
   | 'denied'
   | 'unavailable';
 
+export type VoiceMode = 'whisper' | 'browser';
+
 interface UseVoiceInputReturn {
   isListening: boolean;
   isTranscribing: boolean;
   transcript: string;
   error: string | null;
   micPermission: MicPermission;
+  voiceMode: VoiceMode;
   startListening: () => void;
   stopListening: () => void;
   isSupported: boolean;
   clearError: () => void;
   openMicSetup: () => void;
+  setVoiceMode: (mode: VoiceMode) => void;
 }
+
+const VOICE_MODE_KEY = 'jawad_voice_mode';
 
 /**
  * Convert a Blob to a base64 data-URL string.
@@ -51,24 +57,13 @@ function getSupportedMimeType(): string {
 }
 
 /**
- * Voice input hook — records audio directly in the sidebar context.
+ * Voice input hook — supports two modes:
  *
- * ### Permission Flow (Siri-like):
- *   1. On mount: check if `jawad_mic_granted` flag exists in storage
- *   2. If not yet granted → sidebar shows a "Voice Setup" banner
- *   3. User clicks banner → opens `mic-setup.html` in a new tab
- *      → this is a full browser tab where Firefox's permission dialog
- *        works reliably (unlike the narrow sidebar panel)
- *   4. User clicks "Allow" → permission is stored for the extension origin
- *   5. Tab auto-closes, sidebar detects the grant via storage listener
- *   6. From then on: getUserMedia works instantly — no more prompts ever
+ * **Whisper mode** (default): Records in sidebar → Whisper API transcription.
+ *   Requires OpenAI or OpenRouter. Best accuracy. Needs mic-setup one-time.
  *
- * ### Recording Flow:
- *   1. User clicks mic → sidebar calls getUserMedia() (already permitted)
- *   2. MediaRecorder captures audio
- *   3. User clicks stop → audio blob → base64
- *   4. Sent to background for Whisper API transcription
- *   5. Background returns VOICE_RESULT with text
+ * **Browser Speech mode**: Uses Web Speech API in content script.
+ *   Free, no API key. Real-time transcript. Requires HTTPS page.
  */
 export function useVoiceInput(
   onResult: (transcript: string) => void
@@ -78,32 +73,60 @@ export function useVoiceInput(
   const [transcript, setTranscript] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [micPermission, setMicPermission] = useState<MicPermission>('unknown');
+  const [voiceMode, setVoiceModeState] = useState<VoiceMode>('whisper');
 
   const onResultRef = useRef(onResult);
   onResultRef.current = onResult;
 
-  // Refs for MediaRecorder state
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const mimeRef = useRef<string>('');
+  const browserModeActiveRef = useRef(false);
 
-  // Detect if getUserMedia is available in this context
-  const isSupported =
+  const hasMediaRecorder =
     typeof navigator !== 'undefined' &&
     !!navigator.mediaDevices &&
     typeof navigator.mediaDevices.getUserMedia === 'function' &&
     typeof MediaRecorder !== 'undefined';
 
-  // ---- Check permission state on mount ----
+  const isSupported = hasMediaRecorder || true; // Browser mode works via content script
+
+  const setVoiceMode = useCallback((mode: VoiceMode) => {
+    setVoiceModeState(mode);
+    browser.storage.local.set({ [VOICE_MODE_KEY]: mode }).catch(() => {});
+  }, []);
+
+  // ---- Load voice mode and permission on mount ----
   useEffect(() => {
-    if (!isSupported) {
+    browser.storage.local.get(VOICE_MODE_KEY).then((d) => {
+      if (d[VOICE_MODE_KEY] === 'browser' || d[VOICE_MODE_KEY] === 'whisper') {
+        setVoiceModeState(d[VOICE_MODE_KEY]);
+      }
+    });
+
+    const onStorageChanged = (
+      changes: Record<string, { oldValue?: unknown; newValue?: unknown }>
+    ) => {
+      if (changes[VOICE_MODE_KEY]?.newValue === 'browser' || changes[VOICE_MODE_KEY]?.newValue === 'whisper') {
+        setVoiceModeState(changes[VOICE_MODE_KEY].newValue as VoiceMode);
+      }
+      if (changes.jawad_mic_granted?.newValue === true) {
+        setMicPermission('granted');
+      }
+    };
+    browser.storage.onChanged.addListener(onStorageChanged);
+    return () => browser.storage.onChanged.removeListener(onStorageChanged);
+  }, []);
+
+  useEffect(() => {
+    if (voiceMode === 'browser') return;
+    if (!hasMediaRecorder) {
       setMicPermission('unavailable');
       return;
     }
     checkPermissionState();
 
-    // Listen for storage changes — detects when mic-setup.html grants permission
     const onStorageChanged = (
       changes: Record<string, { oldValue?: unknown; newValue?: unknown }>
     ) => {
@@ -112,18 +135,14 @@ export function useVoiceInput(
       }
     };
     browser.storage.onChanged.addListener(onStorageChanged);
-    return () => {
-      browser.storage.onChanged.removeListener(onStorageChanged);
-    };
-  }, [isSupported]);
+    return () => browser.storage.onChanged.removeListener(onStorageChanged);
+  }, [voiceMode, hasMediaRecorder]);
 
   async function checkPermissionState() {
     setMicPermission('checking');
     try {
-      // First check the storage flag (fast path)
       const data = await browser.storage.local.get('jawad_mic_granted');
       if (data.jawad_mic_granted === true) {
-        // Verify the actual browser permission hasn't been revoked
         try {
           const perm = await navigator.permissions.query({
             name: 'microphone' as PermissionName,
@@ -134,16 +153,12 @@ export function useVoiceInput(
               setMicPermission(perm.state as MicPermission);
             return;
           }
-          // Permission was revoked — reset the flag
           await browser.storage.local.remove('jawad_mic_granted');
         } catch {
-          // Permissions API not available — trust the flag
           setMicPermission('granted');
           return;
         }
       }
-
-      // No flag — check raw permission state
       try {
         const perm = await navigator.permissions.query({
           name: 'microphone' as PermissionName,
@@ -151,7 +166,6 @@ export function useVoiceInput(
         setMicPermission(perm.state as MicPermission);
         perm.onchange = () => setMicPermission(perm.state as MicPermission);
       } catch {
-        // Permissions API unavailable — assume prompt needed
         setMicPermission('prompt');
       }
     } catch {
@@ -159,41 +173,46 @@ export function useVoiceInput(
     }
   }
 
-  // ---- Listen for transcription results from background ----
+  // ---- Listen for voice results ----
   useEffect(() => {
     const unsubscribe = addMessageHandler((msg) => {
       if (msg.type === 'VOICE_RESULT') {
-        const payload = msg.payload as {
-          transcript: string;
-          isFinal: boolean;
-        };
+        const payload = msg.payload as { transcript: string; isFinal: boolean };
         setTranscript(payload.transcript);
         setIsTranscribing(false);
         setIsListening(false);
         setError(null);
-        if (payload.isFinal) {
+        if (payload.isFinal && payload.transcript) {
           onResultRef.current(payload.transcript);
+        }
+      } else if (msg.type === 'VOICE_SPEECH_RESULT') {
+        const payload = msg.payload as {
+          transcript: string;
+          isFinal: boolean;
+          isInterim?: boolean;
+        };
+        setTranscript(payload.transcript);
+        setError(null);
+        if (payload.isFinal && payload.transcript) {
+          setIsListening(false);
+          onResultRef.current(payload.transcript);
+        }
+        if (payload.isFinal && !payload.transcript) {
+          setIsListening(false);
+        }
+      } else if (msg.type === 'VOICE_STARTED') {
+        setIsListening(true);
+        setError(null);
+      } else if (msg.type === 'VOICE_END') {
+        if (browserModeActiveRef.current) {
+          setIsListening(false);
         }
       } else if (msg.type === 'VOICE_ERROR') {
         const payload = msg.payload as { error: string };
-        console.warn('[Jawad] Transcription error:', payload.error);
+        const raw = payload.error || 'Unknown error';
+        setError(raw);
         setIsTranscribing(false);
         setIsListening(false);
-
-        const raw = payload.error || 'Unknown error';
-        if (raw.includes('No LLM provider configured')) {
-          setError(
-            'Configure an LLM provider in Settings to enable voice transcription.'
-          );
-        } else if (raw.includes('does not support audio transcription')) {
-          setError(
-            'Your LLM provider does not support voice. Try OpenAI or a compatible provider.'
-          );
-        } else if (raw.includes('No speech detected')) {
-          setError('No speech detected. Speak clearly and try again.');
-        } else {
-          setError(`Transcription error: ${raw}`);
-        }
       }
     });
     return unsubscribe;
@@ -201,28 +220,31 @@ export function useVoiceInput(
 
   // ---- Start recording ----
   const startListening = useCallback(async () => {
-    if (!isSupported) {
-      setError('Microphone not available in this browser context.');
+    setError(null);
+    setTranscript('');
+    setIsTranscribing(false);
+
+    if (voiceMode === 'browser') {
+      browserModeActiveRef.current = true;
+      sendToBackground({ type: 'START_SPEECH_RECOGNITION' });
+      setIsListening(true);
       return;
     }
 
-    // If permission hasn't been granted, open the setup page instead
+    if (!hasMediaRecorder) {
+      setError('Voice requires MediaRecorder. Try "Browser Speech" mode in Settings.');
+      return;
+    }
+
     if (micPermission !== 'granted') {
       openMicSetupTab();
       return;
     }
 
-    // Reset state
-    setError(null);
-    setTranscript('');
-    setIsTranscribing(false);
-
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
       streamRef.current = stream;
       chunksRef.current = [];
-
       const mimeType = getSupportedMimeType();
       mimeRef.current = mimeType;
       const options: MediaRecorderOptions = {};
@@ -236,7 +258,6 @@ export function useVoiceInput(
       };
 
       recorder.onstop = async () => {
-        // Release microphone immediately
         streamRef.current?.getTracks().forEach((t) => t.stop());
         streamRef.current = null;
 
@@ -246,7 +267,6 @@ export function useVoiceInput(
           return;
         }
 
-        // Switch to transcribing state
         setIsListening(false);
         setIsTranscribing(true);
 
@@ -254,13 +274,8 @@ export function useVoiceInput(
           const actualMime = mimeRef.current || 'audio/webm';
           const audioBlob = new Blob(chunksRef.current, { type: actualMime });
           const base64 = await blobToBase64(audioBlob);
+          const pureBase64 = base64.includes(',') ? base64.split(',')[1] : base64;
 
-          // Strip the data URL prefix → pure base64
-          const pureBase64 = base64.includes(',')
-            ? base64.split(',')[1]
-            : base64;
-
-          // Send to background for Whisper API transcription
           sendToBackground({
             type: 'VOICE_AUDIO_DIRECT',
             payload: {
@@ -283,79 +298,76 @@ export function useVoiceInput(
         streamRef.current = null;
       };
 
-      // Start capturing
       recorder.start(250);
       setIsListening(true);
     } catch (err) {
       const e = err as Error;
-
-      if (
-        e.name === 'NotAllowedError' ||
-        e.name === 'PermissionDeniedError'
-      ) {
-        // Permission was revoked — need to re-setup
+      if (e.name === 'NotAllowedError' || e.name === 'PermissionDeniedError') {
         setMicPermission('denied');
         await browser.storage.local.remove('jawad_mic_granted');
-        setError(
-          'Microphone permission was revoked. Click the mic button to set up again.'
-        );
+        setError('Microphone denied. Click the mic to set up again.');
       } else if (e.name === 'NotFoundError') {
-        setError('No microphone found. Connect a microphone and try again.');
+        setError('No microphone found.');
       } else if (e.name === 'NotReadableError' || e.name === 'AbortError') {
-        setError(
-          'Microphone is in use by another app. Close it and try again.'
-        );
+        setError('Microphone in use by another app.');
       } else {
         setError(`Microphone error: ${e.message}`);
       }
     }
-  }, [isSupported, micPermission]);
+  }, [voiceMode, micPermission, hasMediaRecorder]);
 
   // ---- Stop recording ----
   const stopListening = useCallback(() => {
+    if (voiceMode === 'browser') {
+      browserModeActiveRef.current = false;
+      sendToBackground({ type: 'STOP_SPEECH_RECOGNITION' });
+      setIsListening(false);
+      return;
+    }
+
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== 'inactive') {
-      recorder.stop(); // triggers onstop → sends audio for transcription
+      recorder.stop();
     } else {
       setIsListening(false);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     }
-  }, []);
+  }, [voiceMode]);
 
-  // ---- Open the one-time mic setup page in a new tab ----
   function openMicSetupTab() {
-    const url = browser.runtime.getURL('mic-setup.html');
-    browser.tabs.create({ url, active: true });
+    browser.tabs.create({
+      url: browser.runtime.getURL('mic-setup.html'),
+      active: true,
+    });
   }
 
-  const clearError = useCallback(() => {
-    setError(null);
-  }, []);
+  const clearError = useCallback(() => setError(null), []);
+  const openMicSetup = useCallback(openMicSetupTab, []);
 
-  const openMicSetup = useCallback(() => {
-    openMicSetupTab();
-  }, []);
-
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (voiceMode === 'browser') {
+        sendToBackground({ type: 'STOP_SPEECH_RECOGNITION' });
+      }
       recorderRef.current?.stop();
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
     };
-  }, []);
+  }, [voiceMode]);
 
   return {
     isListening,
     isTranscribing,
     transcript,
     error,
-    micPermission,
+    micPermission: voiceMode === 'browser' ? 'granted' : micPermission,
+    voiceMode,
     startListening,
     stopListening,
     isSupported,
     clearError,
     openMicSetup,
+    setVoiceMode,
   };
 }

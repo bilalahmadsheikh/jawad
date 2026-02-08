@@ -2,7 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_MODELS } from '../../lib/constants';
 import type { LLMActions } from '../hooks/useLLM';
 import { sendToBackground, addMessageHandler } from '../lib/port';
-import { Save, CheckCircle, AlertCircle, Loader2, Server, Key, Cpu, MessageSquareText } from 'lucide-react';
+import { Save, CheckCircle, AlertCircle, Loader2, Server, Key, Cpu, MessageSquareText, Mic, Zap } from 'lucide-react';
+
+const VOICE_MODE_KEY = 'jawad_voice_mode';
 
 interface SettingsProps {
   llm: LLMActions;
@@ -56,6 +58,20 @@ export function Settings({ llm }: SettingsProps) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+  const [voiceMode, setVoiceMode] = useState<'whisper' | 'browser'>('whisper');
+
+  useEffect(() => {
+    browser.storage.local.get(VOICE_MODE_KEY).then((d) => {
+      if (d[VOICE_MODE_KEY] === 'browser' || d[VOICE_MODE_KEY] === 'whisper') {
+        setVoiceMode(d[VOICE_MODE_KEY]);
+      }
+    });
+  }, []);
+
+  const handleVoiceMode = (mode: 'whisper' | 'browser') => {
+    setVoiceMode(mode);
+    browser.storage.local.set({ [VOICE_MODE_KEY]: mode }).catch(() => {});
+  };
 
   // Listen for TEST_RESULT from background script
   useEffect(() => {
@@ -208,6 +224,42 @@ export function Settings({ llm }: SettingsProps) {
           className="mt-1.5"
           style={FIELD}
         />
+      </section>
+
+      {/* ── Voice Mode ── */}
+      <section>
+        <Label icon={<Mic size={11} />} text="Voice Input" />
+        <div className="grid grid-cols-2 gap-2 mt-2">
+          <button
+            onClick={() => handleVoiceMode('whisper')}
+            className="flex flex-col items-center gap-1 py-3 rounded-xl text-center transition-all duration-200"
+            style={{
+              background: voiceMode === 'whisper' ? '#1d2840' : '#151e30',
+              border: voiceMode === 'whisper' ? '1.5px solid #e8792b' : '1.5px solid #253045',
+              color: voiceMode === 'whisper' ? '#eef2f7' : '#5d6f85',
+            }}
+          >
+            <Zap size={14} style={{ color: voiceMode === 'whisper' ? '#e8792b' : '#5d6f85' }} />
+            <span className="text-[11px] font-bold">Whisper</span>
+            <span className="text-[8px]" style={{ color: '#3d4d65' }}>OpenAI/OpenRouter · Best accuracy</span>
+          </button>
+          <button
+            onClick={() => handleVoiceMode('browser')}
+            className="flex flex-col items-center gap-1 py-3 rounded-xl text-center transition-all duration-200"
+            style={{
+              background: voiceMode === 'browser' ? '#1d2840' : '#151e30',
+              border: voiceMode === 'browser' ? '1.5px solid #e8792b' : '1.5px solid #253045',
+              color: voiceMode === 'browser' ? '#eef2f7' : '#5d6f85',
+            }}
+          >
+            <Mic size={14} style={{ color: voiceMode === 'browser' ? '#e8792b' : '#5d6f85' }} />
+            <span className="text-[11px] font-bold">Browser</span>
+            <span className="text-[8px]" style={{ color: '#3d4d65' }}>Free · No API · Real-time</span>
+          </button>
+        </div>
+        <p className="text-[10px] mt-1.5" style={{ color: '#3d4d65' }}>
+          {voiceMode === 'whisper' ? 'Uses your LLM provider for transcription. Requires OpenAI or OpenRouter.' : 'Uses browser speech. Works on HTTPS pages. No API key needed.'}
+        </p>
       </section>
 
       {/* ── Custom prompt ── */}

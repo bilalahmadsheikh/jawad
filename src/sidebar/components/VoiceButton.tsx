@@ -10,7 +10,7 @@ interface VoiceButtonProps {
 export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
   const {
     isListening, isTranscribing, transcript, error,
-    micPermission, startListening, stopListening,
+    micPermission, voiceMode, startListening, stopListening,
     isSupported, clearError, openMicSetup,
   } = useVoiceInput(onResult);
 
@@ -27,8 +27,8 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
   }
 
   const busy = isListening || isTranscribing;
-  const needsSetup = micPermission === 'prompt' || micPermission === 'denied' || micPermission === 'unknown' || micPermission === 'checking';
-  const isReady = micPermission === 'granted';
+  const needsSetup = voiceMode === 'whisper' && (micPermission === 'prompt' || micPermission === 'denied' || micPermission === 'unknown' || micPermission === 'checking');
+  const isReady = voiceMode === 'browser' || micPermission === 'granted';
 
   let title = 'Start voice input';
   if (isListening) title = 'Stop recording';
@@ -66,9 +66,16 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
       </button>
 
       {/* Recording tooltip */}
-      {isListening && (
+      {isListening && !transcript && (
         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 rounded-lg text-[10px] font-bold whitespace-nowrap shadow-lg z-50 pointer-events-none tooltip-recording">
-          🎤 Recording…
+          🎤 {voiceMode === 'browser' ? 'Listening…' : 'Recording…'}
+        </div>
+      )}
+
+      {/* Live transcript (Browser Speech real-time) */}
+      {isListening && transcript && (
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2.5 py-1.5 rounded-lg text-[11px] max-w-[180px] shadow-lg z-50 pointer-events-none tooltip-recording line-clamp-2">
+          {transcript}
         </div>
       )}
 
