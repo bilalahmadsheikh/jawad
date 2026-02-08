@@ -100,35 +100,35 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
         )}
       </button>
 
-      {/* Setup hint — mic not yet enabled */}
+      {/* Setup hint — mic not yet enabled (above button, only when idle) */}
       {!busy && !error && needsSetup && (
         <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-orange-900/90 border border-orange-600 rounded text-xs text-orange-200 whitespace-nowrap shadow-lg z-50 pointer-events-none">
           🎤 Click to enable voice
         </div>
       )}
 
-      {/* Recording indicator */}
+      {/* Recording indicator — to the right so it doesn't cover buttons above */}
       {isListening && (
-        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-red-500/90 border border-red-400 rounded text-xs text-white whitespace-nowrap shadow-lg z-50 pointer-events-none">
-          🎤 Recording... click mic to stop
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-red-500/90 border border-red-400 rounded text-xs text-white whitespace-nowrap shadow-lg z-50 pointer-events-none">
+          🎤 Recording… click to stop
         </div>
       )}
 
-      {/* Transcribing indicator */}
+      {/* Transcribing indicator — to the right */}
       {isTranscribing && (
-        <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-blue-600/90 border border-blue-400 rounded text-xs text-white whitespace-nowrap shadow-lg z-50 pointer-events-none animate-pulse">
-          ⏳ Transcribing...
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 px-2 py-1 bg-blue-600/90 border border-blue-400 rounded text-xs text-white whitespace-nowrap shadow-lg z-50 pointer-events-none animate-pulse">
+          ⏳ Transcribing…
         </div>
       )}
 
-      {/* Transcript result */}
+      {/* Transcript result (briefly shown, above button — idle so no overlap) */}
       {!busy && transcript && !error && (
         <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-slate-700 border border-slate-600 rounded text-xs text-slate-200 whitespace-nowrap max-w-[200px] truncate shadow-lg z-50 pointer-events-none">
           ✅ {transcript}
         </div>
       )}
 
-      {/* Error tooltip */}
+      {/* Error tooltip (above button — idle so no overlap) */}
       {error && !busy && (
         <div className="absolute bottom-full left-0 mb-2 px-2 py-1 bg-amber-900 border border-amber-600 rounded text-xs text-amber-200 max-w-[280px] shadow-lg z-50">
           <div className="flex items-start gap-1">
