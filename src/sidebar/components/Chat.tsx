@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useChatStore } from '../stores/chat-store';
 import { VoiceButton } from './VoiceButton';
+import type { VoiceButtonHandle } from './VoiceButton';
 import type { LLMActions } from '../hooks/useLLM';
 import { Send, Trash2, Zap, Bot, User, FileText, Sparkles, Globe, MousePointer, Mic } from 'lucide-react';
 
@@ -10,7 +11,7 @@ interface ChatProps {
 }
 
 /* ── Welcome screen (shown when no messages) ── */
-function WelcomeScreen({ onChip }: { onChip: (text: string) => void }) {
+function WelcomeScreen({ onChip, onVoice }: { onChip: (text: string) => void; onVoice: () => void }) {
   return (
     <div className="flex flex-col items-center justify-center h-full px-6 fade-up" style={{ paddingBottom: '20%' }}>
       <div className="w-14 h-14 rounded-2xl flex items-center justify-center mb-5" style={{ background: 'linear-gradient(135deg, #e8792b, #d4621a)', boxShadow: '0 8px 30px rgba(232,121,43,0.25)' }}>
@@ -27,18 +28,24 @@ function WelcomeScreen({ onChip }: { onChip: (text: string) => void }) {
           { icon: <FileText size={12} />, label: 'Summarize page', action: 'Summarize this page' },
           { icon: <Globe size={12} />, label: 'What is this site?', action: 'What is this website about?' },
           { icon: <MousePointer size={12} />, label: 'Find a button', action: 'Find the main call-to-action button' },
-          { icon: <Mic size={12} />, label: 'Voice commands', action: '' },
         ].map((c) => (
           <button
             key={c.label}
-            onClick={() => c.action && onChip(c.action)}
+            onClick={() => onChip(c.action)}
             className="chip"
-            disabled={!c.action}
           >
             {c.icon}
             {c.label}
           </button>
         ))}
+        <button
+          onClick={onVoice}
+          className="chip"
+          style={{ border: '1.5px solid rgba(232,121,43,0.4)', color: '#e8792b' }}
+        >
+          <Mic size={12} />
+          Voice commands
+        </button>
       </div>
     </div>
   );
@@ -51,6 +58,7 @@ export function Chat({ llm }: ChatProps) {
   const [isResearchMode, setIsResearchMode] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const voiceRef = useRef<VoiceButtonHandle>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -83,7 +91,7 @@ export function Chat({ llm }: ChatProps) {
     <div className="flex flex-col h-full">
 
       {!hasMessages && !isLoading ? (
-        <WelcomeScreen onChip={send} />
+        <WelcomeScreen onChip={send} onVoice={() => voiceRef.current?.startListening()} />
       ) : (
         <div className="flex-1 overflow-y-auto px-3 py-4 space-y-3">
           {messages.map((msg) => (
@@ -170,7 +178,7 @@ export function Chat({ llm }: ChatProps) {
 
         {/* Input row — the inner input uses explicit inline styles to defeat Firefox */}
         <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-xl transition-all duration-200" style={{ background: '#172033', border: '1.5px solid #293548' }}>
-          <VoiceButton onResult={handleVoiceResult} disabled={isLoading} />
+          <VoiceButton ref={voiceRef} onResult={handleVoiceResult} disabled={isLoading} />
 
           <input
             ref={inputRef}

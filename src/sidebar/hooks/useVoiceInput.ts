@@ -54,11 +54,23 @@ export function useVoiceInput(
     browser.storage.local.set({ [VOICE_MODE_KEY]: mode }).catch(() => {});
   }, []);
 
-  // Load saved voice mode on mount
+  // Load saved voice mode on mount; auto-detect if not set
   useEffect(() => {
-    browser.storage.local.get(VOICE_MODE_KEY).then((d) => {
-      if (d[VOICE_MODE_KEY] === 'browser' || d[VOICE_MODE_KEY] === 'whisper') {
-        setVoiceModeState(d[VOICE_MODE_KEY] as VoiceMode);
+    Promise.all([
+      browser.storage.local.get(VOICE_MODE_KEY),
+      browser.storage.local.get('jawad_config'),
+    ]).then(([modeData, configData]) => {
+      const saved = modeData[VOICE_MODE_KEY];
+      if (saved === 'browser' || saved === 'whisper') {
+        setVoiceModeState(saved as VoiceMode);
+      } else {
+        // No saved preference — auto-detect based on provider
+        const config = configData.jawad_config as { provider?: string } | undefined;
+        if (config?.provider === 'ollama') {
+          // Ollama doesn't support Whisper, default to browser speech
+          setVoiceModeState('browser');
+        }
+        // Otherwise keep default 'whisper' for OpenAI/OpenRouter
       }
     });
   }, []);

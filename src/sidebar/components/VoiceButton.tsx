@@ -1,6 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useImperativeHandle, forwardRef } from 'react';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { Mic, MicOff, AlertTriangle, X, Loader2 } from 'lucide-react';
+
+export interface VoiceButtonHandle {
+  startListening: () => void;
+}
 
 interface VoiceButtonProps {
   onResult: (transcript: string) => void;
@@ -17,11 +21,14 @@ interface VoiceButtonProps {
  * All recording is delegated to the content script via the background.
  * The sidebar never touches getUserMedia or MediaRecorder directly.
  */
-export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
+export const VoiceButton = forwardRef<VoiceButtonHandle, VoiceButtonProps>(function VoiceButton({ onResult, disabled }, ref) {
   const {
     isListening, isTranscribing, transcript, error,
     voiceMode, startListening, stopListening, clearError,
   } = useVoiceInput(onResult);
+
+  // Expose startListening to parent via ref
+  useImperativeHandle(ref, () => ({ startListening }), [startListening]);
 
   // Auto-dismiss errors after 10 seconds
   useEffect(() => {
@@ -114,4 +121,4 @@ export function VoiceButton({ onResult, disabled }: VoiceButtonProps) {
       )}
     </div>
   );
-}
+});
