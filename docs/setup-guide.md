@@ -1,4 +1,4 @@
-# FoxAgent — Developer Setup Guide
+# Jawad — Developer Setup Guide
 
 ## Prerequisites
 
@@ -37,11 +37,11 @@ This runs `build.mjs` which:
 2. Navigate to `about:debugging#/runtime/this-firefox`
 3. Click **"Load Temporary Add-on"**
 4. Select `dist/manifest.json`
-5. Open the sidebar: **View → Sidebar → FoxAgent**
+5. Open the sidebar: **View → Sidebar → Jawad**
 
 ### 4. Configure LLM Provider
 
-In the FoxAgent sidebar:
+In the Jawad sidebar:
 1. Click the **Settings** tab (gear icon)
 2. Select your provider (Ollama, OpenRouter, or OpenAI)
 3. Enter API key (if required)
@@ -142,7 +142,7 @@ npm run build
 ```
 
 Then reload the extension in `about:debugging`:
-- Click the **Reload** button next to FoxAgent
+- Click the **Reload** button next to Jawad
 
 ### Type Checking
 
@@ -159,7 +159,7 @@ npm run lint    # runs tsc --noEmit
 ### No LLM response
 - Check Settings tab for correct provider configuration
 - For Ollama: ensure the server is running (`ollama serve`)
-- Check background script console in `about:debugging` → FoxAgent → Inspect
+- Check background script console in `about:debugging` → Jawad → Inspect
 
 ### Voice not working
 - Enable `media.webspeech.recognition.enable` in `about:config`

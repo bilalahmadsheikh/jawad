@@ -23,7 +23,7 @@ export interface CachedPageSnapshot {
   timestamp: number;
 }
 
-const CACHE_KEY = 'foxagent_page_cache';
+const CACHE_KEY = 'jawad_page_cache';
 const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
 const MAX_ENTRIES = 50;
 

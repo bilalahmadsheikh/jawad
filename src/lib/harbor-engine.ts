@@ -10,8 +10,8 @@ import { DEFAULT_HARBOR_POLICY, CRITICAL_ACTION_KEYWORDS } from './constants';
  */
 export async function getHarborPolicy(): Promise<HarborPolicy> {
   try {
-    const data = await browser.storage.local.get('foxagent_harbor');
-    return (data.foxagent_harbor as HarborPolicy) || DEFAULT_HARBOR_POLICY;
+    const data = await browser.storage.local.get('jawad_harbor');
+    return (data.jawad_harbor as HarborPolicy) || DEFAULT_HARBOR_POLICY;
   } catch {
     return DEFAULT_HARBOR_POLICY;
   }
@@ -21,7 +21,7 @@ export async function getHarborPolicy(): Promise<HarborPolicy> {
  * Save the Harbor policy to browser storage.
  */
 export async function saveHarborPolicy(policy: HarborPolicy): Promise<void> {
-  await browser.storage.local.set({ foxagent_harbor: policy });
+  await browser.storage.local.set({ jawad_harbor: policy });
 }
 
 /**

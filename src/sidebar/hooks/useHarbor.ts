@@ -16,9 +16,9 @@ export function useHarbor() {
 
   const loadPolicy = async () => {
     try {
-      const data = await browser.storage.local.get('foxagent_harbor');
-      if (data.foxagent_harbor) {
-        setPolicy(data.foxagent_harbor as HarborPolicy);
+      const data = await browser.storage.local.get('jawad_harbor');
+      if (data.jawad_harbor) {
+        setPolicy(data.jawad_harbor as HarborPolicy);
       }
     } catch {
       // Use default policy
@@ -28,7 +28,7 @@ export function useHarbor() {
 
   const savePolicy = useCallback(async (newPolicy: HarborPolicy) => {
     try {
-      await browser.storage.local.set({ foxagent_harbor: newPolicy });
+      await browser.storage.local.set({ jawad_harbor: newPolicy });
       setPolicy(newPolicy);
     } catch (e) {
       console.error('Failed to save Harbor policy:', e);

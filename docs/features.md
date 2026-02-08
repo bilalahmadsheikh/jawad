@@ -1,8 +1,8 @@
-# FoxAgent — Features and Capabilities
+# Jawad — Features and Capabilities
 
 ## Capability Tiers
 
-FoxAgent implements three graduated capability tiers, each increasing power and responsibility.
+Jawad implements three graduated capability tiers, each increasing power and responsibility.
 
 ### Tier 1: LLM Access + Tool Calling
 
@@ -76,7 +76,7 @@ FoxAgent implements three graduated capability tiers, each increasing power and 
 
 ## Intent Classification
 
-FoxAgent classifies user input to route requests efficiently:
+Jawad classifies user input to route requests efficiently:
 
 | Intent | Detection | Processing |
 |--------|-----------|------------|

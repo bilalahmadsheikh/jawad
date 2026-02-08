@@ -1,5 +1,5 @@
 // ============================================================
-// FoxAgent Background Script
+// Jawad Background Script
 // Central hub for LLM calls, tool execution, message routing.
 // Now also handles voice relay from content script → sidebar.
 // ============================================================
@@ -12,7 +12,7 @@ let sidebarPort: browser.Port | null = null;
 browser.runtime.onConnect.addListener((port: browser.Port) => {
   if (port.name === 'sidebar') {
     sidebarPort = port;
-    console.log('[FoxAgent] Sidebar connected');
+    console.log('[Jawad] Sidebar connected');
 
     port.onMessage.addListener((msg: unknown) => {
       const message = msg as Record<string, unknown>;
@@ -32,7 +32,7 @@ browser.runtime.onConnect.addListener((port: browser.Port) => {
 
     port.onDisconnect.addListener(() => {
       sidebarPort = null;
-      console.log('[FoxAgent] Sidebar disconnected');
+      console.log('[Jawad] Sidebar disconnected');
     });
   }
 });
@@ -94,4 +94,4 @@ async function relayVoiceCommand(type: string): Promise<void> {
   }
 }
 
-console.log('[FoxAgent] Background script loaded');
+console.log('[Jawad] Background script loaded');

@@ -3,7 +3,7 @@ import { execSync } from 'child_process';
 import { cpSync, mkdirSync, existsSync } from 'fs';
 
 async function buildExtension() {
-  console.log('=== Building FoxAgent ===\n');
+  console.log('=== Building Jawad ===\n');
 
   // Step 1: Build sidebar React app with Vite
   console.log('[1/4] Building sidebar...');
@@ -52,7 +52,7 @@ async function buildExtension() {
   console.log('  2. Go to about:debugging#/runtime/this-firefox');
   console.log('  3. Click "Load Temporary Add-on"');
   console.log('  4. Select dist/manifest.json');
-  console.log('  5. Open sidebar: View > Sidebar > FoxAgent');
+  console.log('  5. Open sidebar: View > Sidebar > Jawad');
 }
 
 buildExtension().catch((err) => {

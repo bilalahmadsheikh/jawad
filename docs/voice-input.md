@@ -1,8 +1,8 @@
-# FoxAgent — Voice Input System
+# Jawad — Voice Input System
 
 ## Overview
 
-FoxAgent supports voice-native navigation through the Web Speech API (`SpeechRecognition`). Due to Firefox sidebar limitations, voice capture runs in the content script and results are relayed through the background script to the sidebar.
+Jawad supports voice-native navigation through the Web Speech API (`SpeechRecognition`). Due to Firefox sidebar limitations, voice capture runs in the content script and results are relayed through the background script to the sidebar.
 
 ## Architecture
 

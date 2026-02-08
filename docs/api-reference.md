@@ -1,8 +1,8 @@
-# FoxAgent — API and Message Protocol Reference
+# Jawad — API and Message Protocol Reference
 
 ## Message Protocol
 
-FoxAgent uses Firefox extension messaging APIs for inter-component communication.
+Jawad uses Firefox extension messaging APIs for inter-component communication.
 
 ### Communication Channels
 
@@ -171,7 +171,7 @@ Request user permission for a tool action.
     "parameters": { "selector": "button.add-to-cart" },
     "site": "amazon.com",
     "permissionLevel": "interact",
-    "reason": "FoxAgent wants to use 'click_element' on amazon.com",
+    "reason": "Jawad wants to use 'click_element' on amazon.com",
     "timestamp": 1707400000000
   }
 }

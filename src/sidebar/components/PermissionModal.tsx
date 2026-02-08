@@ -38,7 +38,7 @@ export function PermissionModal({ request, onDecision }: PermissionModalProps) {
           <div>
             <div className="text-xs text-slate-400 mb-1">Action</div>
             <div className="text-sm text-slate-200 font-medium">
-              FoxAgent wants to use{' '}
+              Jawad wants to use{' '}
               <span className="text-orange-400">{request.toolName}</span>
             </div>
           </div>

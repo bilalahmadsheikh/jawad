@@ -51,14 +51,14 @@ export async function handleMessage(
       break;
 
     case 'SAVE_SETTINGS':
-      await browser.storage.local.set({ foxagent_config: payload });
+      await browser.storage.local.set({ jawad_config: payload });
       break;
 
     case 'GET_SETTINGS': {
-      const data = await browser.storage.local.get('foxagent_config');
+      const data = await browser.storage.local.get('jawad_config');
       port.postMessage({
         type: 'SETTINGS',
-        payload: data.foxagent_config || null,
+        payload: data.jawad_config || null,
       });
       break;
     }
@@ -238,8 +238,8 @@ async function handleChatMessage(
     // hallucinate tool calls like <summarize_page/>.
     if ((isPageSummarize || isPageQA) && pageContext && !isActionIntent) {
       const systemContent = isPageSummarize
-        ? 'You are FoxAgent, a helpful browser assistant. Summarize the page content concisely using bullet points for key information. Be brief but thorough.'
-        : 'You are FoxAgent, a helpful browser assistant. Answer the user\'s question using ONLY the provided page context. If the answer is not in the context, say "I don\'t see that information on this page." Be concise and use bullet points.';
+        ? 'You are Jawad, a helpful browser assistant. Summarize the page content concisely using bullet points for key information. Be brief but thorough.'
+        : 'You are Jawad, a helpful browser assistant. Answer the user\'s question using ONLY the provided page context. If the answer is not in the context, say "I don\'t see that information on this page." Be concise and use bullet points.';
 
       const qaResponse = await chatCompletion(config, {
         messages: [
@@ -382,7 +382,7 @@ async function handleSummarizePage(port: browser.Port): Promise<void> {
 
     const response = await chatCompletion(config, {
       messages: [
-        { role: 'system', content: `You are FoxAgent. ${summaryPrompt}` },
+        { role: 'system', content: `You are Jawad. ${summaryPrompt}` },
         {
           role: 'user',
           content: `Summarize this page:\n\nTitle: ${pageContent.title || 'Unknown'}\nURL: ${currentTab.url}\n\nContent:\n${pageContent.markdown.substring(0, 5000)}`,
@@ -436,7 +436,7 @@ export function requestPermissionFromUser(
         parameters: args,
         site,
         permissionLevel,
-        reason: `FoxAgent wants to use '${toolName}' on ${site}`,
+        reason: `Jawad wants to use '${toolName}' on ${site}`,
         timestamp: Date.now(),
       },
     });
@@ -463,8 +463,8 @@ function handlePermissionResponse(
 }
 
 async function getConfig(): Promise<LLMConfig> {
-  const data = await browser.storage.local.get('foxagent_config');
-  const config = data.foxagent_config as LLMConfig | undefined;
+  const data = await browser.storage.local.get('jawad_config');
+  const config = data.jawad_config as LLMConfig | undefined;
   if (!config) {
     throw new Error(
       'LLM not configured. Please open Settings and set up your AI provider.'

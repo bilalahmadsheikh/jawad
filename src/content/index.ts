@@ -1,5 +1,5 @@
 // ============================================================
-// FoxAgent Content Script
+// Jawad Content Script
 // Injected into every page.
 // Handles: page reading, actions, voice relay, product extraction
 // ============================================================
@@ -123,4 +123,4 @@ function stopVoiceCapture(): void {
   }
 }
 
-console.log('[FoxAgent] Content script loaded on', window.location.href);
+console.log('[Jawad] Content script loaded on', window.location.href);

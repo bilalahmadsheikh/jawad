@@ -51,7 +51,7 @@ export function useVoiceInput(
 
         case 'VOICE_ERROR': {
           const payload = msg.payload as { error: string };
-          console.warn('[FoxAgent] Voice error:', payload.error);
+          console.warn('[Jawad] Voice error:', payload.error);
           setIsListening(false);
 
           // User-friendly error message

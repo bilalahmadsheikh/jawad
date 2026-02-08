@@ -1,8 +1,8 @@
 {
-  "name": "foxagent",
+  "name": "jawad",
   "version": "1.0.0",
   "private": true,
-  "description": "FoxAgent - Bring Your Own AI to Every Website. A Browser Operating System.",
+  "description": "Jawad - Bring Your Own AI to Every Website. A Browser Operating System.",
   "scripts": {
     "build": "node build.mjs",
     "lint": "tsc --noEmit"

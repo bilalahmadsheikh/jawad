@@ -63,8 +63,8 @@ export async function chatCompletion(
 
   // OpenRouter-specific headers
   if (config.provider === 'openrouter') {
-    headers['HTTP-Referer'] = 'https://foxagent.dev';
-    headers['X-Title'] = 'FoxAgent';
+    headers['HTTP-Referer'] = 'https://jawad.dev';
+    headers['X-Title'] = 'Jawad';
   }
 
   const body: Record<string, unknown> = {

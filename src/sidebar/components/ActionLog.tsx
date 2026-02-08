@@ -25,7 +25,7 @@ export function ActionLog() {
         <div className="text-4xl mb-2">📋</div>
         <p>No actions yet</p>
         <p className="text-xs mt-1">
-          Actions will appear here as FoxAgent interacts with pages
+          Actions will appear here as Jawad interacts with pages
         </p>
       </div>
     );

@@ -27,7 +27,7 @@ export const useChatStore = create<ChatState>((set) => ({
       id: 'welcome',
       role: 'assistant',
       content:
-        "**Welcome to FoxAgent!** I'm your browser operating system.\n\nI can:\n- **Summarize** any web page\n- **Navigate** and **interact** with sites\n- **Research** across multiple tabs\n- Accept **voice commands**\n\nConfigure your AI provider in **Settings** to get started.",
+        "**Welcome to Jawad!** Like Jarvis is to Iron Man, I'm your personal AI browser assistant.\n\nI can:\n- **Summarize** any web page\n- **Navigate** and **interact** with sites\n- **Research** across multiple tabs\n- Accept **voice commands**\n\nConfigure your AI provider in **Settings** to get started.",
       timestamp: Date.now(),
     },
   ],

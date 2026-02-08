@@ -234,8 +234,8 @@ Keep it to 3-5 steps. Use real, common websites.`,
 }
 
 async function getConfig(): Promise<LLMConfig> {
-  const data = await browser.storage.local.get('foxagent_config');
-  const config = data.foxagent_config as LLMConfig | undefined;
+  const data = await browser.storage.local.get('jawad_config');
+  const config = data.jawad_config as LLMConfig | undefined;
   if (!config) {
     throw new Error('LLM not configured.');
   }

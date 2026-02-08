@@ -1,8 +1,8 @@
-# FoxAgent — Workflows and Orchestration
+# Jawad — Workflows and Orchestration
 
 ## Overview
 
-FoxAgent supports multi-step, cross-site workflows through its orchestration layer. This enables complex tasks like "find flights, check my calendar, and draft an email" to be executed as a coordinated sequence.
+Jawad supports multi-step, cross-site workflows through its orchestration layer. This enables complex tasks like "find flights, check my calendar, and draft an email" to be executed as a coordinated sequence.
 
 **File**: `src/background/orchestrator.ts`
 
@@ -108,7 +108,7 @@ The `waitForLoad()` function:
 
 ## Specialized Agents
 
-FoxAgent includes specialized agent definitions for common workflows:
+Jawad includes specialized agent definitions for common workflows:
 
 | Agent | File | Purpose |
 |-------|------|---------|

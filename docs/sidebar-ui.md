@@ -1,8 +1,8 @@
-# FoxAgent — Sidebar UI and User Interaction
+# Jawad — Sidebar UI and User Interaction
 
 ## Overview
 
-The sidebar is FoxAgent's primary user interface, built with React 18, Zustand for state management, and Tailwind CSS for styling. It runs in Firefox's sidebar panel.
+The sidebar is Jawad's primary user interface, built with React 18, Zustand for state management, and Tailwind CSS for styling. It runs in Firefox's sidebar panel.
 
 **Entry point**: `src/sidebar/main.tsx` → `src/sidebar/App.tsx`
 
@@ -75,7 +75,7 @@ User input → useLLM.sendChatMessage(content)
 ### Welcome Message
 On startup (and after `clearMessages()`), the chat shows:
 
-> **Welcome to FoxAgent!** I'm your browser operating system.
+> **Welcome to Jawad!** I'm your browser operating system.
 >
 > I can:
 > - **Summarize** any web page

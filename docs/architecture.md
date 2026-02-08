@@ -1,8 +1,8 @@
-# FoxAgent — Architecture Overview
+# Jawad — Architecture Overview
 
 ## System Design
 
-FoxAgent is a Firefox browser extension that turns the browser into an AI-powered operating system. It follows a **three-layer architecture** connecting the sidebar UI, background services, and content scripts.
+Jawad is a Firefox browser extension that turns the browser into an AI-powered operating system. It follows a **three-layer architecture** connecting the sidebar UI, background services, and content scripts.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -146,7 +146,7 @@ Sidebar (useVoiceInput.ts) ──► calls onResult(transcript)
 
 - **Manifest V2** (Firefox)
 - **Permissions**: `activeTab`, `storage`, `tabs`, `<all_urls>`
-- **Sidebar action**: Opens the FoxAgent panel
+- **Sidebar action**: Opens the Jawad panel
 - **Content scripts**: Injected into all pages at `document_idle`
 - **CSP**: `script-src 'self'; object-src 'self'`
 

@@ -35,17 +35,17 @@ export function Settings({ llm }: SettingsProps) {
   const loadSettings = async () => {
     try {
       const data = await browser.storage.local.get([
-        'foxagent_config',
-        'foxagent_systemPrompt',
+        'jawad_config',
+        'jawad_systemPrompt',
       ]);
-      if (data.foxagent_config) {
-        const config = data.foxagent_config as SettingsState;
+      if (data.jawad_config) {
+        const config = data.jawad_config as SettingsState;
         setSettings({
           provider: config.provider || 'ollama',
           apiKey: config.apiKey || '',
           model: config.model || 'llama3',
           baseUrl: config.baseUrl || 'http://localhost:11434/v1',
-          customSystemPrompt: (data.foxagent_systemPrompt as string) || '',
+          customSystemPrompt: (data.jawad_systemPrompt as string) || '',
         });
       }
     } catch {
@@ -83,7 +83,7 @@ export function Settings({ llm }: SettingsProps) {
 
     // Also save custom system prompt separately
     await browser.storage.local.set({
-      foxagent_systemPrompt: settings.customSystemPrompt,
+      jawad_systemPrompt: settings.customSystemPrompt,
     });
 
     setSaved(true);

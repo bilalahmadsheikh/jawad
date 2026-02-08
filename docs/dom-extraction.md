@@ -1,8 +1,8 @@
-# FoxAgent — DOM Extraction and Page Context
+# Jawad — DOM Extraction and Page Context
 
 ## Overview
 
-FoxAgent extracts rich, structured content from any webpage to provide the LLM with accurate context. This is critical for grounded responses and preventing hallucinations.
+Jawad extracts rich, structured content from any webpage to provide the LLM with accurate context. This is critical for grounded responses and preventing hallucinations.
 
 **File**: `src/content/dom-reader.ts`
 

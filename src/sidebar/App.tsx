@@ -45,10 +45,10 @@ export default function App() {
                 return '';
               }
             })()}
-            alt="FoxAgent"
+            alt="Jawad"
             className="w-6 h-6"
           />
-          <span className="font-bold text-orange-400 text-sm">FoxAgent</span>
+          <span className="font-bold text-orange-400 text-sm">Jawad</span>
           <span className="text-xs text-slate-500 ml-auto">Browser OS</span>
         </div>
 

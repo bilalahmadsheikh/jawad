@@ -1,10 +1,10 @@
 {
   "manifest_version": 2,
-  "name": "FoxAgent",
+  "name": "Jawad",
   "version": "1.0.0",
   "description": "Bring Your Own AI to Every Website — A Browser Operating System",
   "sidebar_action": {
-    "default_title": "FoxAgent",
+    "default_title": "Jawad",
     "default_panel": "sidebar.html",
     "default_icon": "icons/fox.svg"
   },

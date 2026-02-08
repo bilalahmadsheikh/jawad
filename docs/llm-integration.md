@@ -1,8 +1,8 @@
-# FoxAgent — LLM Integration
+# Jawad — LLM Integration
 
 ## Universal LLM Router (`src/lib/any-llm-router.ts`)
 
-FoxAgent uses a single abstraction layer that supports three LLM providers with a unified API.
+Jawad uses a single abstraction layer that supports three LLM providers with a unified API.
 
 ### Supported Providers
 

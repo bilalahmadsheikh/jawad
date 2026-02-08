@@ -1,5 +1,5 @@
 // ============================================================
-// FoxAgent - Shared Type Definitions
+// Jawad - Shared Type Definitions
 // ============================================================
 
 // --- LLM Configuration ---

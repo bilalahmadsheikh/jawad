@@ -126,7 +126,7 @@ export function Chat({ llm }: ChatProps) {
         {/* Research Mode Banner */}
         {isResearchMode && (
           <div className="bg-purple-500/10 border border-purple-500/30 rounded px-2 py-1 text-xs text-purple-300">
-            🔬 <strong>Research Mode:</strong> Describe your research goal. FoxAgent will open
+            🔬 <strong>Research Mode:</strong> Describe your research goal. Jawad will open
             multiple tabs and compile results.
           </div>
         )}
@@ -143,7 +143,7 @@ export function Chat({ llm }: ChatProps) {
             placeholder={
               isResearchMode
                 ? 'Describe your research goal...'
-                : 'Ask FoxAgent anything...'
+                : 'Ask Jawad anything...'
             }
             disabled={isLoading}
             className="flex-1 bg-slate-700 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 disabled:opacity-50"

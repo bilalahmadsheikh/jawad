@@ -1,8 +1,8 @@
-# FoxAgent — Harbor Permission System
+# Jawad — Harbor Permission System
 
 ## Overview
 
-Harbor is FoxAgent's permission engine, mediating between AI capabilities and user control. It ensures that every agent action is either explicitly authorized or falls within a pre-approved policy.
+Harbor is Jawad's permission engine, mediating between AI capabilities and user control. It ensures that every agent action is either explicitly authorized or falls within a pre-approved policy.
 
 **File**: `src/lib/harbor-engine.ts`
 
@@ -158,7 +158,7 @@ When a permission check returns `'ask'`, the sidebar shows a modal:
 ┌─────────────────────────────────────────┐
 │  🔒 Permission Request                  │
 │                                         │
-│  FoxAgent wants to use 'click_element'  │
+│  Jawad wants to use 'click_element'  │
 │  on amazon.com                          │
 │                                         │
 │  Parameters: { selector: ".add-to-cart" }│
@@ -232,5 +232,5 @@ The sidebar includes a Harbor Manager component (`src/sidebar/components/HarborM
 
 Harbor state is managed through:
 - **Zustand store** (`src/sidebar/stores/harbor-store.ts`): Manages `pendingPermissions` and `actionLog` arrays in the sidebar
-- **`browser.storage.local`**: Persistent policy storage across sessions (key: `foxagent_harbor_policy`)
+- **`browser.storage.local`**: Persistent policy storage across sessions (key: `jawad_harbor_policy`)
 - **Background script**: Enforces policies during tool execution via `harbor-engine.ts`

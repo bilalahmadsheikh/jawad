@@ -1,13 +1,13 @@
 // ============================================================
-// Visual Highlighter - Shows the user what FoxAgent is targeting
+// Visual Highlighter - Shows the user what Jawad is targeting
 // ============================================================
 
-const HIGHLIGHT_CLASS = 'foxagent-highlight-overlay';
-const STYLE_ID = 'foxagent-highlight-styles';
+const HIGHLIGHT_CLASS = 'jawad-highlight-overlay';
+const STYLE_ID = 'jawad-highlight-styles';
 
 /**
  * Highlight an element with a pulsing orange border so the user
- * can see what FoxAgent is about to interact with.
+ * can see what Jawad is about to interact with.
  * Accepts either a CSS selector string or an Element directly.
  */
 export function highlightElement(target: string | Element): void {
@@ -38,7 +38,7 @@ export function highlightElement(target: string | Element): void {
     border: 3px solid #f97316;
     border-radius: 6px;
     box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 20px rgba(249, 115, 22, 0.4);
-    animation: foxagent-pulse 1s ease-in-out infinite;
+    animation: jawad-pulse 1s ease-in-out infinite;
   `;
 
   // Add label
@@ -56,7 +56,7 @@ export function highlightElement(target: string | Element): void {
     white-space: nowrap;
     font-weight: 600;
   `;
-  label.textContent = 'FoxAgent Target';
+  label.textContent = 'Jawad Target';
   overlay.appendChild(label);
 
   document.body.appendChild(overlay);
@@ -68,7 +68,7 @@ export function highlightElement(target: string | Element): void {
 }
 
 /**
- * Remove all FoxAgent highlight overlays.
+ * Remove all Jawad highlight overlays.
  */
 function removeHighlights(): void {
   const overlays = document.querySelectorAll(`.${HIGHLIGHT_CLASS}`);
@@ -84,7 +84,7 @@ function injectStyles(): void {
   const style = document.createElement('style');
   style.id = STYLE_ID;
   style.textContent = `
-    @keyframes foxagent-pulse {
+    @keyframes jawad-pulse {
       0%, 100% {
         box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.3), 0 0 20px rgba(249, 115, 22, 0.4);
         border-color: #f97316;
