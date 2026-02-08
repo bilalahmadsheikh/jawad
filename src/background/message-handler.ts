@@ -74,6 +74,10 @@ export async function handleMessage(
     case 'CLEAR_HISTORY':
       conversationHistory = [];
       break;
+
+    case 'TEST_CONNECTION':
+      await handleTestConnection(payload as Record<string, unknown>, port);
+      break;
   }
 }
 
@@ -459,6 +463,56 @@ function handlePermissionResponse(
   if (pending) {
     pending.resolve(decision);
     pendingPermissions.delete(requestId);
+  }
+}
+
+/**
+ * Test connection to the configured LLM provider.
+ * Runs in the background script which has full network access.
+ */
+async function handleTestConnection(
+  payload: Record<string, unknown>,
+  port: browser.Port
+): Promise<void> {
+  const baseUrl = (payload.baseUrl as string) || 'http://localhost:11434/v1';
+  const model = (payload.model as string) || 'llama3';
+  const apiKey = (payload.apiKey as string) || '';
+
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'Say ok' }],
+        max_tokens: 5,
+      }),
+    });
+
+    if (response.ok) {
+      port.postMessage({ type: 'TEST_RESULT', payload: { success: true } });
+    } else {
+      const errText = await response.text().catch(() => '');
+      port.postMessage({
+        type: 'TEST_RESULT',
+        payload: {
+          success: false,
+          error: `HTTP ${response.status}: ${errText.substring(0, 150) || response.statusText}`,
+        },
+      });
+    }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err);
+    port.postMessage({
+      type: 'TEST_RESULT',
+      payload: {
+        success: false,
+        error: `Connection failed: ${msg}`,
+      },
+    });
   }
 }
 

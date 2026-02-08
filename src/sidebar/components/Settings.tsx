@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DEFAULT_MODELS } from '../../lib/constants';
 import type { LLMActions } from '../hooks/useLLM';
+import { sendToBackground, addMessageHandler } from '../lib/port';
 import { Save, CheckCircle, AlertCircle, Loader2, Server, Key, Cpu, MessageSquareText } from 'lucide-react';
 
 interface SettingsProps {
@@ -54,6 +55,20 @@ export function Settings({ llm }: SettingsProps) {
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<'success' | 'error' | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+
+  // Listen for TEST_RESULT from background script
+  useEffect(() => {
+    const unsub = addMessageHandler((msg) => {
+      if (msg.type === 'TEST_RESULT') {
+        const p = msg.payload as { success: boolean; error?: string };
+        setTestResult(p.success ? 'success' : 'error');
+        setTestError(p.success ? null : (p.error || 'Unknown error'));
+        setTesting(false);
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => { loadSettings(); }, []);
 
@@ -87,18 +102,24 @@ export function Settings({ llm }: SettingsProps) {
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleTest = async () => {
-    setTesting(true); setTestResult(null);
-    try {
-      const r = await fetch(`${s.baseUrl}/chat/completions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(s.apiKey ? { Authorization: `Bearer ${s.apiKey}` } : {}) },
-        body: JSON.stringify({ model: s.model, messages: [{ role: 'user', content: 'Say ok' }], max_tokens: 5 }),
+  const handleTest = useCallback(() => {
+    setTesting(true); setTestResult(null); setTestError(null);
+    // Route test through background script — sidebar can't fetch localhost directly
+    sendToBackground({
+      type: 'TEST_CONNECTION',
+      payload: { baseUrl: s.baseUrl, model: s.model, apiKey: s.apiKey },
+    });
+    // Timeout fallback in case background never responds
+    setTimeout(() => {
+      setTesting((prev) => {
+        if (prev) {
+          setTestResult('error');
+          setTestError('Test timed out — is Ollama running?');
+        }
+        return false;
       });
-      setTestResult(r.ok ? 'success' : 'error');
-    } catch { setTestResult('error'); }
-    setTesting(false);
-  };
+    }, 15000);
+  }, [s.baseUrl, s.model, s.apiKey]);
 
   const models = DEFAULT_MODELS[s.provider] || [];
 
@@ -219,6 +240,16 @@ export function Settings({ llm }: SettingsProps) {
           Test
         </button>
       </div>
+
+      {/* ── Test error detail ── */}
+      {testResult === 'error' && testError && (
+        <div className="px-3 py-2.5 rounded-xl text-[11px] fade-up" style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)', color: '#fca5a5' }}>
+          <div className="flex items-start gap-2">
+            <AlertCircle size={12} className="flex-shrink-0 mt-0.5" style={{ color: '#f87171' }} />
+            <span className="leading-relaxed">{testError}</span>
+          </div>
+        </div>
+      )}
 
       {/* ── Help card ── */}
       <div className="card p-3.5 text-[11px] space-y-1.5" style={{ color: '#5d6f85' }}>
